@@ -2,124 +2,219 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Settings, House, Plus, FileText, Play } from 'lucide-react';
 
 export default function Home() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('templates');
   const router = useRouter();
 
-  const detectPlatform = (url: string): 'tiktok' | 'instagram' | 'unknown' => {
-    if (url.includes('tiktok.com')) return 'tiktok';
-    if (url.includes('instagram.com')) return 'instagram';
-    return 'unknown';
-  };
-
   const handleExtract = async () => {
-    if (!url.trim()) {
-      setError('Please enter a URL');
-      return;
-    }
-
-    const platform = detectPlatform(url);
-    if (platform === 'unknown') {
-      setError('Please enter a valid TikTok or Instagram URL');
-      return;
-    }
+    if (!url.trim()) return;
 
     setLoading(true);
-    setError('');
-
     try {
+      const platform = url.includes('tiktok') ? 'tiktok' : 'instagram';
       const response = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, platform }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to extract template');
-      }
+      if (!response.ok) throw new Error('Failed to extract');
 
       const data = await response.json();
-
-      // Navigate to template breakdown screen
       router.push(`/template/${data.templateId}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to extract template');
+    } catch (error) {
+      console.error('Extract error:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  const templates = [
+    {
+      id: 1,
+      title: 'Top 10 Cafes',
+      meta: '10 clips • 5 captions',
+      duration: '0:15',
+      color: '#E879F9',
+    },
+    {
+      id: 2,
+      title: '5 Must-See Spots',
+      meta: '5 photos • 3 captions',
+      duration: '0:12',
+      color: 'var(--accent-teal)',
+    },
+    {
+      id: 3,
+      title: 'Chiang Mai Itinerary',
+      meta: '7 clips • 4 captions',
+      duration: '0:30',
+      color: '#A78BFA',
+    },
+    {
+      id: 4,
+      title: 'Street Food Tour',
+      meta: '6 clips • 5 captions',
+      duration: '0:18',
+      color: 'var(--accent-pink)',
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-3 text-gray-900">
-            Reel Template Extractor
-          </h1>
-          <p className="text-gray-600 text-lg">
-            Paste any TikTok or Instagram reel URL to extract its template with layers
-          </p>
-        </div>
-
-        <div className="bg-gray-50 rounded-2xl p-6 mb-6">
-          <label className="block text-sm font-semibold text-gray-900 mb-3">
-            Paste URL
-          </label>
-          <input
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://www.tiktok.com/@user/video/..."
-            className="w-full bg-white rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-400"
-            disabled={loading}
-          />
-        </div>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-            <p className="text-red-600 text-sm">{error}</p>
-          </div>
-        )}
-
-        <button
-          onClick={handleExtract}
-          disabled={loading}
-          className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-4 rounded-2xl hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {loading ? 'Extracting Template...' : 'Extract Template'}
+    <div className="h-screen w-full flex flex-col bg-[var(--bg-page)]">
+      {/* Nav Bar */}
+      <div className="flex items-center justify-between h-14 px-6 pt-4">
+        <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+          TemplateMaker
+        </h1>
+        <button className="w-10 h-10 flex items-center justify-center rounded-[20px] bg-[var(--bg-card)]">
+          <Settings className="w-5 h-5" style={{ color: 'var(--text-primary)' }} />
         </button>
+      </div>
 
-        <div className="mt-12">
-          <h3 className="text-sm font-semibold text-gray-500 mb-4">
-            What you'll get:
-          </h3>
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <span className="text-2xl">🎬</span>
-              <div>
-                <div className="text-sm font-semibold text-gray-900">Video Layer</div>
-                <div className="text-xs text-gray-600">All video clips with timing</div>
-              </div>
+      {/* Content */}
+      <div className="flex-1 flex flex-col gap-6 px-6 pt-4 pb-3 overflow-y-auto">
+        {/* Import from URL Card */}
+        <div className="flex flex-col gap-3">
+          <div className="rounded-[20px] bg-[var(--accent-purple)] p-5 flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-white text-sm font-semibold">📎 Import from URL</span>
             </div>
-            <div className="flex items-start gap-3">
-              <span className="text-2xl">📝</span>
-              <div>
-                <div className="text-sm font-semibold text-gray-900">Text Layer</div>
-                <div className="text-xs text-gray-600">Editable text with timing</div>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <span className="text-2xl">🎵</span>
-              <div>
-                <div className="text-sm font-semibold text-gray-900">Music Layer</div>
-                <div className="text-xs text-gray-600">Background audio track</div>
-              </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Paste TikTok or Reel URL..."
+                className="flex-1 bg-white rounded-[18px] px-4 py-3 text-sm placeholder:text-[var(--text-tertiary)] focus:outline-none"
+                disabled={loading}
+              />
+              <button
+                onClick={handleExtract}
+                disabled={loading || !url.trim()}
+                className="w-12 h-12 flex items-center justify-center rounded-[18px] bg-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                <span className="text-[var(--accent-purple)] text-xl">→</span>
+              </button>
             </div>
           </div>
         </div>
+
+        {/* Tabs */}
+        <div className="bg-[var(--bg-card)] rounded-[22px] p-1 flex h-11">
+          <button
+            onClick={() => setActiveTab('templates')}
+            className={`flex-1 rounded-[18px] flex items-center justify-center text-sm font-medium transition-colors ${
+              activeTab === 'templates'
+                ? 'bg-white text-[var(--text-primary)]'
+                : 'text-[var(--text-secondary)]'
+            }`}
+          >
+            Templates
+          </button>
+          <button
+            onClick={() => setActiveTab('edits')}
+            className={`flex-1 rounded-[18px] flex items-center justify-center text-sm font-medium transition-colors ${
+              activeTab === 'edits'
+                ? 'bg-white text-[var(--text-primary)]'
+                : 'text-[var(--text-secondary)]'
+            }`}
+          >
+            My Edits
+          </button>
+          <button
+            onClick={() => setActiveTab('drafts')}
+            className={`flex-1 rounded-[18px] flex items-center justify-center text-sm font-medium transition-colors ${
+              activeTab === 'drafts'
+                ? 'bg-white text-[var(--text-primary)]'
+                : 'text-[var(--text-secondary)]'
+            }`}
+          >
+            Drafts
+          </button>
+        </div>
+
+        {/* Templates Grid */}
+        <div className="flex flex-col gap-3">
+          {/* Row 1 */}
+          <div className="flex gap-3">
+            {templates.slice(0, 2).map((template) => (
+              <div key={template.id} className="flex-1 flex flex-col gap-2">
+                <div
+                  className="relative rounded-2xl h-[200px]"
+                  style={{ backgroundColor: template.color }}
+                >
+                  {/* Play Button */}
+                  <div className="absolute left-[10px] bottom-[46px] w-9 h-9 flex items-center justify-center rounded-[18px] bg-black/25">
+                    <Play className="w-4 h-4 text-white fill-white" />
+                  </div>
+                  {/* Duration */}
+                  <div className="absolute right-[10px] bottom-[32px] px-2 py-1 rounded-lg bg-black/40">
+                    <span className="text-white text-[11px] font-semibold">
+                      {template.duration}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
+                    {template.title}
+                  </h3>
+                  <p className="text-[11px] text-[var(--text-secondary)]">
+                    {template.meta}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Row 2 */}
+          <div className="flex gap-3">
+            {templates.slice(2, 4).map((template) => (
+              <div key={template.id} className="flex-1 flex flex-col gap-2">
+                <div
+                  className="relative rounded-2xl h-[200px]"
+                  style={{ backgroundColor: template.color }}
+                >
+                  {/* Play Button */}
+                  <div className="absolute left-[10px] bottom-[46px] w-9 h-9 flex items-center justify-center rounded-[18px] bg-black/25">
+                    <Play className="w-4 h-4 text-white fill-white" />
+                  </div>
+                  {/* Duration */}
+                  <div className="absolute right-[10px] bottom-[32px] px-2 py-1 rounded-lg bg-black/40">
+                    <span className="text-white text-[11px] font-semibold">
+                      {template.duration}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
+                    {template.title}
+                  </h3>
+                  <p className="text-[11px] text-[var(--text-secondary)]">
+                    {template.meta}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Nav */}
+      <div className="h-18 flex items-center justify-around px-8 pb-6 pt-3 bg-[#FAFAFA] border-t border-[#E4E4E7]">
+        <button className="w-9 h-9 flex items-center justify-center">
+          <House className="w-7 h-7" style={{ color: 'var(--accent-purple)' }} />
+        </button>
+        <button className="w-14 h-14 flex items-center justify-center rounded-[28px] bg-[var(--accent-purple)]">
+          <Plus className="w-7 h-7 text-white" />
+        </button>
+        <button className="w-9 h-9 flex items-center justify-center">
+          <FileText className="w-7 h-7" style={{ color: 'var(--text-tertiary)' }} />
+        </button>
       </div>
     </div>
   );

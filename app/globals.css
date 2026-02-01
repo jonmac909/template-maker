@@ -1,9 +1,32 @@
 @import "tailwindcss";
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap');
+
+:root {
+  /* Colors */
+  --accent-pink: #F472B6;
+  --accent-purple: #8B5CF6;
+  --accent-purple-soft: rgba(139, 92, 246, 0.13);
+  --accent-teal: #14B8A6;
+  --bg-card: #F4F4F5;
+  --bg-elevated: #E4E4E7;
+  --bg-page: #FFFFFF;
+  --text-primary: #18181B;
+  --text-secondary: #71717A;
+  --text-tertiary: #A1A1AA;
+  --text-muted: #D4D4D8;
+
+  /* Typography */
+  --font-body: 'Inter', sans-serif;
+  --font-display: 'Plus Jakarta Sans', sans-serif;
+
+  /* Border Radius */
+  --radius-card: 24px;
+  --radius-pill: 100px;
+}
 
 body {
-  font-family: 'DM Sans', sans-serif;
-  background: #FFFFFF;
+  font-family: var(--font-body);
+  background: var(--bg-page);
 }
