@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reel Template Extractor - Mockup</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Bricolage+Grotesque:wght@700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: #f0f0f0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        .phone {
+            width: 375px;
+            height: 812px;
+            background: white;
+            border-radius: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .screen {
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        .header {
+            padding: 60px 24px 24px;
+        }
+
+        .header h1 {
+            font-family: 'Bricolage Grotesque', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
+            color: #1A1A1A;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 15px;
+            color: #6B7280;
+            line-height: 1.5;
+        }
+
+        .body {
+            flex: 1;
+            padding: 0 24px 24px;
+            overflow-y: auto;
+        }
+
+        .input-card {
+            background: #F6F7F8;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .input-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A1A1A;
+            margin-bottom: 12px;
+        }
+
+        .input-field {
+            background: white;
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 15px;
+            color: #9CA3AF;
+            border: none;
+            width: 100%;
+        }
+
+        .btn {
+            background: #FF6B6B;
+            border-radius: 16px;
+            padding: 18px;
+            text-align: center;
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        .btn:hover {
+            background: #ff5555;
+        }
+
+        .examples {
+            margin-top: 20px;
+        }
+
+        .examples h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #6B7280;
+            margin-bottom: 12px;
+        }
+
+        .example-card {
+            background: #F6F7F8;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .example-card h4 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A1A1A;
+            margin-bottom: 6px;
+        }
+
+        .example-card p {
+            font-size: 13px;
+            color: #6B7280;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 60px 24px 16px;
+        }
+
+        .back-btn {
+            color: #FF6B6B;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        .top-bar h2 {
+            font-family: 'Bricolage Grotesque', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: #1A1A1A;
+        }
+
+        .save-btn {
+            color: #22C55E;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .video-preview {
+            width: 200px;
+            height: 355px;
+            background: #000;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            border-radius: 12px;
+            margin: 0 auto 20px;
+        }
+
+        .scenes-list {
+            padding: 20px 24px;
+        }
+
+        .scenes-list h3 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1A1A1A;
+            margin-bottom: 16px;
+        }
+
+        .scene-card {
+            background: #F6F7F8;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            display: flex;
+            gap: 12px;
+        }
+
+        .scene-thumb {
+            width: 60px;
+            height: 106px;
+            background: #D1D5DB;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+
+        .scene-info {
+            flex: 1;
+        }
+
+        .scene-time {
+            font-size: 13px;
+            font-weight: 600;
+            color: #FF6B6B;
+            margin-bottom: 6px;
+        }
+
+        .scene-desc {
+            font-size: 14px;
+            color: #1A1A1A;
+            margin-bottom: 4px;
+        }
+
+        .scene-text {
+            font-size: 12px;
+            color: #6B7280;
+        }
+
+        .music-badge {
+            background: #FFFBEB;
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .success-header {
+            text-align: center;
+            padding: 80px 24px 24px;
+        }
+
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            background: #22C55E;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            color: white;
+            margin: 0 auto 16px;
+        }
+
+        .nav-dots {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            background: rgba(0,0,0,0.5);
+            padding: 12px 20px;
+            border-radius: 20px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.4);
+            cursor: pointer;
+        }
+
+        .dot.active {
+            background: white;
+            width: 24px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone">
+        <!-- Screen 1: URL Input -->
+        <div class="screen active" id="screen1">
+            <div class="header">
+                <h1>Reel Template Extractor</h1>
+                <p>Paste any TikTok or Instagram reel to extract its template</p>
+            </div>
+            <div class="body">
+                <div class="input-card">
+                    <div class="input-label">Paste URL</div>
+                    <input type="text" class="input-field" placeholder="https://www.tiktok.com/@user/video/..." value="">
+                </div>
+                <button class="btn" onclick="nextScreen()">Extract Template</button>
+                <div class="examples">
+                    <h3>Examples</h3>
+                    <div class="example-card">
+                        <h4>Top 10 Cafes in Chiang Mai</h4>
+                        <p>Countdown style with text overlays</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Screen 2: Template Breakdown -->
+        <div class="screen" id="screen2">
+            <div class="top-bar">
+                <span class="back-btn" onclick="prevScreen()">← Back</span>
+                <h2>Template Breakdown</h2>
+                <span style="width: 60px;"></span>
+            </div>
+            <div class="video-preview">
+                <div>📹 Video Preview</div>
+                <div style="position: absolute; bottom: 15px; right: 15px; background: rgba(0,0,0,0.6); padding: 6px 12px; border-radius: 8px; font-size: 13px;">0:45</div>
+            </div>
+            <div class="scenes-list">
+                <h3>Scenes Detected</h3>
+                <div class="scene-card">
+                    <div class="scene-thumb"></div>
+                    <div class="scene-info">
+                        <div class="scene-time">0:00 - 0:05</div>
+                        <div class="scene-desc">Opening title card with text overlay</div>
+                        <div class="scene-text">Text: "Top 10 Cafes in Chiang Mai"</div>
+                    </div>
+                </div>
+                <div class="scene-card">
+                    <div class="scene-thumb"></div>
+                    <div class="scene-info">
+                        <div class="scene-time">0:05 - 0:10</div>
+                        <div class="scene-desc">Cafe #10 - exterior shot</div>
+                    </div>
+                </div>
+                <div class="music-badge">
+                    <span>🎵 Music</span>
+                    <span style="color: #6B7280;">Chill Vibes - Lo-fi Beat</span>
+                </div>
+                <button class="btn" onclick="nextScreen()" style="margin-top: 20px;">Edit Template</button>
+            </div>
+        </div>
+
+        <!-- Screen 3: Edit Template -->
+        <div class="screen" id="screen3">
+            <div class="top-bar">
+                <span class="back-btn" onclick="prevScreen()">← Back</span>
+                <h2>Edit Template</h2>
+                <span class="save-btn" onclick="nextScreen()">Save</span>
+            </div>
+            <div class="body">
+                <div class="input-card">
+                    <div class="input-label">Scene 1 (0:00 - 0:05)</div>
+                    <div style="background: white; border-radius: 12px; width: 180px; height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0 auto 12px; cursor: pointer;">
+                        <div style="font-size: 32px;">📸</div>
+                        <div style="font-size: 14px; color: #6B7280; margin-top: 8px; text-align: center; padding: 0 20px;">Tap to replace media</div>
+                    </div>
+                    <div style="font-size: 13px; color: #6B7280; margin-bottom: 8px;">Text Overlay</div>
+                    <input type="text" class="input-field" value="Top 10 Restaurants in Bangkok" style="color: #1A1A1A;">
+                </div>
+                <div class="input-card">
+                    <div class="input-label">Scene 2 (0:05 - 0:10)</div>
+                    <div style="background: #D1D5DB; border-radius: 12px; width: 180px; height: 320px; display: flex; align-items: center; justify-content: center; color: #6B7280; margin: 0 auto;">
+                        Your Photo
+                    </div>
+                </div>
+                <button class="btn" onclick="nextScreen()">Generate Video</button>
+            </div>
+        </div>
+
+        <!-- Screen 4: Export Ready -->
+        <div class="screen" id="screen4">
+            <div class="success-header">
+                <div class="success-icon">✓</div>
+                <h1 style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 28px; font-weight: 700; margin-bottom: 8px;">Template Ready!</h1>
+                <p style="color: #6B7280; font-size: 15px;">Your video template has been generated</p>
+            </div>
+            <div class="body">
+                <div class="video-preview" style="border-radius: 16px; margin-bottom: 16px;">
+                    <div style="width: 64px; height: 64px; background: rgba(255,255,255,0.5); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px;">▶</div>
+                </div>
+                <div style="display: flex; gap: 12px; margin-bottom: 32px;">
+                    <div style="flex: 1; background: #F6F7F8; border-radius: 12px; padding: 12px; text-align: center;">
+                        <div style="font-size: 12px; color: #6B7280;">Duration</div>
+                        <div style="font-size: 16px; font-weight: 700; color: #1A1A1A; margin-top: 4px;">0:45</div>
+                    </div>
+                    <div style="flex: 1; background: #F6F7F8; border-radius: 12px; padding: 12px; text-align: center;">
+                        <div style="font-size: 12px; color: #6B7280;">Scenes</div>
+                        <div style="font-size: 16px; font-weight: 700; color: #1A1A1A; margin-top: 4px;">10</div>
+                    </div>
+                    <div style="flex: 1; background: #F6F7F8; border-radius: 12px; padding: 12px; text-align: center;">
+                        <div style="font-size: 12px; color: #6B7280;">Format</div>
+                        <div style="font-size: 16px; font-weight: 700; color: #1A1A1A; margin-top: 4px;">9:16</div>
+                    </div>
+                </div>
+                <button class="btn">Download Video</button>
+                <button class="btn" style="background: #F6F7F8; color: #1A1A1A;">Share Template</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="nav-dots">
+        <div class="dot active" onclick="goToScreen(1)"></div>
+        <div class="dot" onclick="goToScreen(2)"></div>
+        <div class="dot" onclick="goToScreen(3)"></div>
+        <div class="dot" onclick="goToScreen(4)"></div>
+    </div>
+
+    <script>
+        let currentScreen = 1;
+
+        function showScreen(n) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen' + n).classList.add('active');
+
+            document.querySelectorAll('.dot').forEach((dot, i) => {
+                dot.classList.toggle('active', i + 1 === n);
+            });
+
+            currentScreen = n;
+        }
+
+        function nextScreen() {
+            if (currentScreen < 4) {
+                showScreen(currentScreen + 1);
+            }
+        }
+
+        function prevScreen() {
+            if (currentScreen > 1) {
+                showScreen(currentScreen - 1);
+            }
+        }
+
+        function goToScreen(n) {
+            showScreen(n);
+        }
+    </script>
+</body>
+</html>

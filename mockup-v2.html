@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reel Template Extractor - Timeline Editor</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Bricolage+Grotesque:wght@700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: #f0f0f0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        .phone {
+            width: 375px;
+            height: 812px;
+            background: white;
+            border-radius: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .screen {
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 60px 24px 16px;
+        }
+
+        .back-btn {
+            color: #FF6B6B;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        .top-bar h2 {
+            font-family: 'Bricolage Grotesque', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: #1A1A1A;
+        }
+
+        .export-btn {
+            color: #22C55E;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .preview-area {
+            background: #000;
+            height: 300px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .preview-video {
+            width: 168px;
+            height: 300px;
+            background: #1a1a1a;
+            border: 2px solid #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .playhead {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 2px;
+            height: 100%;
+            background: #FF6B6B;
+            z-index: 10;
+        }
+
+        .playhead::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            left: -6px;
+            width: 14px;
+            height: 14px;
+            background: #FF6B6B;
+            border-radius: 50%;
+        }
+
+        .timeline-container {
+            flex: 1;
+            background: #1a1a1a;
+            overflow-y: auto;
+            padding: 16px 0;
+        }
+
+        .timeline-header {
+            padding: 0 16px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .timeline-header h3 {
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .timeline-duration {
+            color: #9CA3AF;
+            font-size: 12px;
+        }
+
+        .layers {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 0 16px;
+        }
+
+        .layer {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .layer-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .layer-icon {
+            font-size: 16px;
+        }
+
+        .layer-name {
+            color: white;
+            font-size: 13px;
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .layer-toggle {
+            color: #6B7280;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .layer-content {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            padding: 8px 0;
+        }
+
+        .clip {
+            background: #FF6B6B;
+            border-radius: 4px;
+            padding: 8px 12px;
+            min-width: 80px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .clip:hover {
+            border-color: white;
+        }
+
+        .clip.video {
+            background: #6366F1;
+        }
+
+        .clip.text {
+            background: #22C55E;
+        }
+
+        .clip.music {
+            background: #F59E0B;
+        }
+
+        .clip-label {
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .clip-time {
+            color: rgba(255,255,255,0.7);
+            font-size: 9px;
+        }
+
+        .add-clip-btn {
+            background: rgba(255,255,255,0.1);
+            border: 2px dashed rgba(255,255,255,0.3);
+            border-radius: 4px;
+            padding: 8px 12px;
+            min-width: 60px;
+            color: rgba(255,255,255,0.5);
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .add-clip-btn:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: rgba(255,255,255,0.5);
+        }
+
+        .controls {
+            background: #0f0f0f;
+            padding: 12px 24px;
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .control-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #2a2a2a;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .control-btn.play {
+            width: 48px;
+            height: 48px;
+            background: #FF6B6B;
+        }
+
+        .nav-dots {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            background: rgba(0,0,0,0.5);
+            padding: 12px 20px;
+            border-radius: 20px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.4);
+            cursor: pointer;
+        }
+
+        .dot.active {
+            background: white;
+            width: 24px;
+            border-radius: 4px;
+        }
+
+        .input-screen {
+            padding: 60px 24px 24px;
+        }
+
+        .input-screen h1 {
+            font-family: 'Bricolage Grotesque', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
+            color: #1A1A1A;
+            margin-bottom: 8px;
+        }
+
+        .input-screen p {
+            font-size: 15px;
+            color: #6B7280;
+            margin-bottom: 32px;
+        }
+
+        .input-card {
+            background: #F6F7F8;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .input-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A1A1A;
+            margin-bottom: 12px;
+        }
+
+        .input-field {
+            background: white;
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 15px;
+            color: #1A1A1A;
+            border: none;
+            width: 100%;
+        }
+
+        .input-field::placeholder {
+            color: #9CA3AF;
+        }
+
+        .btn {
+            background: #FF6B6B;
+            border-radius: 16px;
+            padding: 18px;
+            text-align: center;
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background: #ff5555;
+        }
+
+        .loading-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 24px;
+        }
+
+        .loading-spinner {
+            width: 80px;
+            height: 80px;
+            border: 6px solid #F6F7F8;
+            border-top-color: #FF6B6B;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 24px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-screen h2 {
+            font-family: 'Bricolage Grotesque', sans-serif;
+            font-size: 24px;
+            font-weight: 700;
+            color: #1A1A1A;
+            margin-bottom: 8px;
+        }
+
+        .loading-screen p {
+            font-size: 15px;
+            color: #6B7280;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone">
+        <!-- Screen 1: URL Input -->
+        <div class="screen active" id="screen1">
+            <div class="input-screen">
+                <h1>Reel Template Extractor</h1>
+                <p>Paste any TikTok or Instagram reel URL to extract its template with layers</p>
+
+                <div class="input-card">
+                    <div class="input-label">Paste URL</div>
+                    <input type="text" class="input-field" placeholder="https://www.tiktok.com/@user/video/...">
+                </div>
+
+                <button class="btn" onclick="showLoading()">Extract Template</button>
+
+                <div style="margin-top: 32px;">
+                    <h3 style="font-size: 14px; font-weight: 600; color: #6B7280; margin-bottom: 16px;">What you'll get:</h3>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <div style="font-size: 24px;">🎬</div>
+                            <div>
+                                <div style="font-size: 14px; font-weight: 600; color: #1A1A1A;">Video Layer</div>
+                                <div style="font-size: 12px; color: #6B7280;">All video clips with timing</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <div style="font-size: 24px;">📝</div>
+                            <div>
+                                <div style="font-size: 14px; font-weight: 600; color: #1A1A1A;">Text Layer</div>
+                                <div style="font-size: 12px; color: #6B7280;">Editable text with timing</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <div style="font-size: 24px;">🎵</div>
+                            <div>
+                                <div style="font-size: 14px; font-weight: 600; color: #1A1A1A;">Music Layer</div>
+                                <div style="font-size: 12px; color: #6B7280;">Background audio track</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Screen 2: Loading -->
+        <div class="screen" id="screen2">
+            <div class="loading-screen">
+                <div class="loading-spinner"></div>
+                <h2>Extracting Template</h2>
+                <p>Analyzing video, detecting scenes, extracting text overlays and music...</p>
+            </div>
+        </div>
+
+        <!-- Screen 3: Timeline Editor -->
+        <div class="screen" id="screen3">
+            <div class="top-bar">
+                <span class="back-btn" onclick="prevScreen()">← Back</span>
+                <h2>Edit Template</h2>
+                <span class="export-btn" onclick="alert('Export video!')">Export</span>
+            </div>
+
+            <div class="preview-area">
+                <div class="playhead"></div>
+                <div class="preview-video">
+                    Preview<br>9:16
+                </div>
+            </div>
+
+            <div class="timeline-container">
+                <div class="timeline-header">
+                    <h3>Timeline</h3>
+                    <span class="timeline-duration">0:00 / 0:45</span>
+                </div>
+
+                <div class="layers">
+                    <!-- Music Layer -->
+                    <div class="layer">
+                        <div class="layer-header">
+                            <span class="layer-icon">🎵</span>
+                            <span class="layer-name">Music</span>
+                            <span class="layer-toggle">👁</span>
+                        </div>
+                        <div class="layer-content">
+                            <div class="clip music">
+                                <div class="clip-label">Lo-fi Beat</div>
+                                <div class="clip-time">0:00 - 0:45</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Text Layer -->
+                    <div class="layer">
+                        <div class="layer-header">
+                            <span class="layer-icon">📝</span>
+                            <span class="layer-name">Text</span>
+                            <span class="layer-toggle">👁</span>
+                        </div>
+                        <div class="layer-content">
+                            <div class="clip text" onclick="alert('Edit text: Top 10 Cafes')">
+                                <div class="clip-label">Top 10 Cafes</div>
+                                <div class="clip-time">0:00 - 0:05</div>
+                            </div>
+                            <div class="clip text" onclick="alert('Edit text: #10')">
+                                <div class="clip-label">#10</div>
+                                <div class="clip-time">0:05 - 0:10</div>
+                            </div>
+                            <div class="clip text" onclick="alert('Edit text: #9')">
+                                <div class="clip-label">#9</div>
+                                <div class="clip-time">0:10 - 0:15</div>
+                            </div>
+                            <div class="add-clip-btn" onclick="alert('Add text clip')">+</div>
+                        </div>
+                    </div>
+
+                    <!-- Video Layer -->
+                    <div class="layer">
+                        <div class="layer-header">
+                            <span class="layer-icon">🎬</span>
+                            <span class="layer-name">Video</span>
+                            <span class="layer-toggle">👁</span>
+                        </div>
+                        <div class="layer-content">
+                            <div class="clip video" onclick="alert('Replace video clip 1')">
+                                <div class="clip-label">Intro</div>
+                                <div class="clip-time">0:00 - 0:05</div>
+                            </div>
+                            <div class="clip video" onclick="alert('Replace video clip 2')">
+                                <div class="clip-label">Cafe 10</div>
+                                <div class="clip-time">0:05 - 0:10</div>
+                            </div>
+                            <div class="clip video" onclick="alert('Replace video clip 3')">
+                                <div class="clip-label">Cafe 9</div>
+                                <div class="clip-time">0:10 - 0:15</div>
+                            </div>
+                            <div class="add-clip-btn" onclick="alert('Add video clip')">+</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="control-btn">⏮</div>
+                <div class="control-btn play">▶</div>
+                <div class="control-btn">⏭</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="nav-dots">
+        <div class="dot active" onclick="goToScreen(1)"></div>
+        <div class="dot" onclick="goToScreen(2)"></div>
+        <div class="dot" onclick="goToScreen(3)"></div>
+    </div>
+
+    <script>
+        let currentScreen = 1;
+
+        function showScreen(n) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen' + n).classList.add('active');
+
+            document.querySelectorAll('.dot').forEach((dot, i) => {
+                dot.classList.toggle('active', i + 1 === n);
+            });
+
+            currentScreen = n;
+        }
+
+        function showLoading() {
+            showScreen(2);
+            setTimeout(() => {
+                showScreen(3);
+            }, 3000);
+        }
+
+        function nextScreen() {
+            if (currentScreen < 3) {
+                showScreen(currentScreen + 1);
+            }
+        }
+
+        function prevScreen() {
+            if (currentScreen > 1) {
+                showScreen(currentScreen - 1);
+            }
+        }
+
+        function goToScreen(n) {
+            showScreen(n);
+        }
+    </script>
+</body>
+</html>

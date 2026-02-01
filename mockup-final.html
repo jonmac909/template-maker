@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reel Template Extractor</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f0f0f0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        .phone {
+            width: 375px;
+            height: 812px;
+            background: white;
+            border-radius: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .screen {
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        /* Screen 1: URL Input */
+        .input-container {
+            padding: 60px 24px 24px;
+        }
+
+        .input-container h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1A1A1A;
+            margin-bottom: 8px;
+        }
+
+        .input-container p {
+            font-size: 15px;
+            color: #6B7280;
+            margin-bottom: 32px;
+        }
+
+        .url-input-card {
+            background: #F3F4F6;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .url-input-card label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #6B7280;
+            margin-bottom: 8px;
+        }
+
+        .url-input-card input {
+            width: 100%;
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 14px;
+            color: #1A1A1A;
+        }
+
+        .url-input-card input::placeholder {
+            color: #9CA3AF;
+        }
+
+        .extract-btn {
+            width: 100%;
+            background: #8B7355;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .extract-btn:hover {
+            background: #7a6449;
+        }
+
+        /* Screen 2: Template Breakdown */
+        .breakdown-container {
+            padding: 60px 24px 24px;
+            background: #F9FAFB;
+        }
+
+        .breakdown-header {
+            margin-bottom: 24px;
+        }
+
+        .breakdown-header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            color: #1F2937;
+            margin-bottom: 24px;
+        }
+
+        .source-card {
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+
+        .source-card label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #6B7280;
+            margin-bottom: 8px;
+        }
+
+        .source-card .url {
+            font-size: 14px;
+            color: #1F2937;
+            word-break: break-all;
+        }
+
+        .scenes-section h2 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #6B7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 16px;
+        }
+
+        .scene-card {
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .scene-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .scene-number {
+            width: 40px;
+            height: 40px;
+            background: #8B7355;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        .scene-title {
+            flex: 1;
+        }
+
+        .scene-title h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1F2937;
+            margin-bottom: 2px;
+        }
+
+        .scene-title .duration {
+            font-size: 13px;
+            color: #6B7280;
+        }
+
+        .scene-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .scene-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .scene-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #6B7280;
+            min-width: 50px;
+        }
+
+        .scene-value {
+            flex: 1;
+            background: #F3F4F6;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 14px;
+            color: #1F2937;
+        }
+
+        .scene-value.has-file::before {
+            content: '✓ ';
+            color: #10B981;
+        }
+
+        .scene-value.add-clip {
+            border: 2px dashed #D1D5DB;
+            background: transparent;
+            color: #9CA3AF;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .open-editor-btn {
+            width: 100%;
+            background: #8B7355;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 18px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 24px;
+        }
+
+        /* Screen 3: Video Editor */
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            background: #1F2937;
+        }
+
+        .editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 60px 20px 16px;
+            background: #111827;
+        }
+
+        .editor-header .back {
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .editor-header h2 {
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .export-btn {
+            background: #8B7355;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .preview-area {
+            flex: 1;
+            background: #374151;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .video-preview {
+            width: 240px;
+            height: 426px;
+            background: #D1D5DB;
+            border-radius: 12px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .play-button {
+            width: 60px;
+            height: 60px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            color: white;
+        }
+
+        .text-overlay-preview {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 2px dashed rgba(255,255,255,0.3);
+        }
+
+        .playback-controls {
+            background: #1F2937;
+            padding: 12px 20px;
+        }
+
+        .playback-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .play-btn {
+            width: 48px;
+            height: 48px;
+            background: #8B7355;
+            border-radius: 50%;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .time-display {
+            color: white;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .timeline-section {
+            background: #111827;
+            padding: 16px;
+        }
+
+        .timeline-label {
+            color: #9CA3AF;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .timeline-clips {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+        }
+
+        .timeline-clip {
+            min-width: 80px;
+            height: 80px;
+            background: #D1D5DB;
+            border-radius: 8px;
+            border: 3px solid transparent;
+            cursor: pointer;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding: 8px;
+        }
+
+        .timeline-clip.active {
+            border-color: #8B7355;
+        }
+
+        .timeline-clip::before {
+            content: '☕';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+        }
+
+        .clip-duration {
+            background: rgba(0,0,0,0.7);
+            color: white;
+            font-size: 10px;
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .editor-toolbar {
+            display: flex;
+            justify-content: space-around;
+            background: #111827;
+            padding: 12px 20px 24px;
+            border-top: 1px solid #374151;
+        }
+
+        .tool-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            background: #374151;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 16px;
+            cursor: pointer;
+            min-width: 60px;
+        }
+
+        .tool-icon {
+            font-size: 20px;
+        }
+
+        .tool-label {
+            color: white;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .nav-dots {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            background: rgba(0,0,0,0.5);
+            padding: 12px 20px;
+            border-radius: 20px;
+            z-index: 1000;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.4);
+            cursor: pointer;
+        }
+
+        .dot.active {
+            background: white;
+            width: 24px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone">
+        <!-- Screen 1: URL Input -->
+        <div class="screen active" id="screen1">
+            <div class="input-container">
+                <h1>Reel Template Extractor</h1>
+                <p>Paste any TikTok or Instagram reel URL</p>
+
+                <div class="url-input-card">
+                    <label>Paste URL</label>
+                    <input type="text" placeholder="tiktok.com/@traveler/video/123456">
+                </div>
+
+                <button class="extract-btn" onclick="nextScreen()">Extract Template</button>
+            </div>
+        </div>
+
+        <!-- Screen 2: Template Breakdown -->
+        <div class="screen" id="screen2">
+            <div class="breakdown-container">
+                <div class="breakdown-header">
+                    <h1>Template Breakdown</h1>
+
+                    <div class="source-card">
+                        <label>📄 Source</label>
+                        <div class="url">tiktok.com/@traveler/video/123456</div>
+                    </div>
+                </div>
+
+                <div class="scenes-section">
+                    <h2>📹 Scenes</h2>
+
+                    <div class="scene-card">
+                        <div class="scene-header">
+                            <div class="scene-number">1</div>
+                            <div class="scene-title">
+                                <h3>Scene 1</h3>
+                                <div class="duration">3.0 seconds</div>
+                            </div>
+                        </div>
+                        <div class="scene-row">
+                            <div class="scene-label">Clip</div>
+                            <div class="scene-value has-file">beach_sunset.mp4</div>
+                        </div>
+                        <div class="scene-row">
+                            <div class="scene-label">Text</div>
+                            <div class="scene-value">5 Hidden Beaches in Algarve 🏖</div>
+                        </div>
+                    </div>
+
+                    <div class="scene-card">
+                        <div class="scene-header">
+                            <div class="scene-number">2</div>
+                            <div class="scene-title">
+                                <h3>Scene 2</h3>
+                                <div class="duration">2.5 seconds</div>
+                            </div>
+                        </div>
+                        <div class="scene-row">
+                            <div class="scene-label">Clip</div>
+                            <div class="scene-value has-file">praia_marinha.mp4</div>
+                        </div>
+                        <div class="scene-row">
+                            <div class="scene-label">Text</div>
+                            <div class="scene-value">1. Praia da Marinha</div>
+                        </div>
+                    </div>
+
+                    <div class="scene-card">
+                        <div class="scene-header">
+                            <div class="scene-number">3</div>
+                            <div class="scene-title">
+                                <h3>Scene 3</h3>
+                                <div class="duration">2.5 seconds</div>
+                            </div>
+                        </div>
+                        <div class="scene-row">
+                            <div class="scene-label">Clip</div>
+                            <div class="scene-value add-clip">+ Add clip</div>
+                        </div>
+                        <div class="scene-row">
+                            <div class="scene-label">Text</div>
+                            <div class="scene-value">2. [Beach name]</div>
+                        </div>
+                    </div>
+
+                    <div class="scene-card">
+                        <div class="scene-header">
+                            <div class="scene-number">4</div>
+                            <div class="scene-title">
+                                <h3>Scene 4</h3>
+                                <div class="duration">2.5 seconds</div>
+                            </div>
+                        </div>
+                        <div class="scene-row">
+                            <div class="scene-label">Clip</div>
+                            <div class="scene-value add-clip">+ Add clip</div>
+                        </div>
+                        <div class="scene-row">
+                            <div class="scene-label">Text</div>
+                            <div class="scene-value">3. [Beach name]</div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="open-editor-btn" onclick="nextScreen()">Open in Video Editor →</button>
+            </div>
+        </div>
+
+        <!-- Screen 3: Video Editor -->
+        <div class="screen" id="screen3">
+            <div class="editor-container">
+                <div class="editor-header">
+                    <div class="back" onclick="prevScreen()">←</div>
+                    <h2>Edit Video</h2>
+                    <button class="export-btn">Export</button>
+                </div>
+
+                <div class="preview-area">
+                    <div class="video-preview">
+                        <div class="play-button">▶</div>
+                        <div class="text-overlay-preview">Top 10 Cafes in Portugal ☕️</div>
+                    </div>
+                </div>
+
+                <div class="playback-controls">
+                    <div class="playback-bar">
+                        <button class="play-btn">▶</button>
+                        <div class="time-display">0:03 / 0:15</div>
+                    </div>
+                </div>
+
+                <div class="timeline-section">
+                    <div class="timeline-label">TIMELINE</div>
+                    <div class="timeline-clips">
+                        <div class="timeline-clip active">
+                            <div class="clip-duration">3.0s</div>
+                        </div>
+                        <div class="timeline-clip">
+                            <div class="clip-duration">2.5s</div>
+                        </div>
+                        <div class="timeline-clip">
+                            <div class="clip-duration">2.5s</div>
+                        </div>
+                        <div class="timeline-clip">
+                            <div class="clip-duration">2.5s</div>
+                        </div>
+                        <div class="timeline-clip">
+                            <div class="clip-duration">2.5s</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="editor-toolbar">
+                    <button class="tool-btn">
+                        <div class="tool-icon">✂️</div>
+                        <div class="tool-label">Trim</div>
+                    </button>
+                    <button class="tool-btn">
+                        <div class="tool-icon">📝</div>
+                        <div class="tool-label">Text</div>
+                    </button>
+                    <button class="tool-btn">
+                        <div class="tool-icon">🎵</div>
+                        <div class="tool-label">Audio</div>
+                    </button>
+                    <button class="tool-btn">
+                        <div class="tool-icon">⚡</div>
+                        <div class="tool-label">Speed</div>
+                    </button>
+                    <button class="tool-btn">
+                        <div class="tool-icon">🎨</div>
+                        <div class="tool-label">Filter</div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="nav-dots">
+        <div class="dot active" onclick="goToScreen(1)"></div>
+        <div class="dot" onclick="goToScreen(2)"></div>
+        <div class="dot" onclick="goToScreen(3)"></div>
+    </div>
+
+    <script>
+        let currentScreen = 1;
+
+        function showScreen(n) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen' + n).classList.add('active');
+
+            document.querySelectorAll('.dot').forEach((dot, i) => {
+                dot.classList.toggle('active', i + 1 === n);
+            });
+
+            currentScreen = n;
+        }
+
+        function nextScreen() {
+            if (currentScreen < 3) {
+                showScreen(currentScreen + 1);
+            }
+        }
+
+        function prevScreen() {
+            if (currentScreen > 1) {
+                showScreen(currentScreen - 1);
+            }
+        }
+
+        function goToScreen(n) {
+            showScreen(n);
+        }
+    </script>
+</body>
+</html>
