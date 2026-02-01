@@ -65,13 +65,14 @@ async function analyzeVideo(videoPath: string, platform: string) {
   // 2. Send frames to Claude Vision API
   // 3. Ask Claude to identify scenes, text overlays, transitions, etc.
 
-  const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
-    max_tokens: 2048,
-    messages: [
-      {
-        role: 'user',
-        content: `Analyze this ${platform} video and extract the template structure.
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 2048,
+      messages: [
+        {
+          role: 'user',
+          content: `Analyze this ${platform} video and extract the template structure.
 
 For a REEL (vertical video):
 - Identify distinct scenes/clips
@@ -88,20 +89,19 @@ For a CAROUSEL (image slideshow):
 Return a JSON structure with this information.
 
 For this demo, create a sample template for a "${platform}" post about "Top 10 Cafes" with 5 clips/slides.`,
-      },
-    ],
-  });
+        },
+      ],
+    });
 
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
 
-  try {
     // Try to extract JSON from the response
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);
     }
   } catch (e) {
-    console.error('Failed to parse JSON:', e);
+    console.error('Claude API failed, using mock data:', e);
   }
 
   // Fallback to mock data
