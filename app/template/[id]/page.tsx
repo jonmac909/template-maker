@@ -329,7 +329,9 @@ export default function TemplateBreakdown() {
       }
     } catch (error) {
       console.error('Deep analysis failed:', error);
-      setAnalysisStatus(`Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Don't show error to user - just log it silently
+      // The extraction already happened during initial load
+      setAnalysisStatus('');
     } finally {
       setDeepAnalyzing(false);
       setTimeout(() => setAnalysisStatus(''), 4000);
