@@ -343,9 +343,11 @@ export default function ReelEditor() {
     }
 
     setReanalyzing(true);
-    setReanalyzeStatus('Analyzing thumbnail with AI...');
+    setReanalyzeStatus('Fetching thumbnail...');
 
     try {
+      console.log('Sending thumbnail URL to analyze:', template.videoInfo.thumbnail);
+
       const response = await fetch('/api/analyze-frames', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -353,7 +355,7 @@ export default function ReelEditor() {
           thumbnailUrl: template.videoInfo.thumbnail,
           frames: [],
           videoInfo: {
-            title: template.videoInfo.title || 'Unknown',
+            title: '', // Don't send title - we want Claude to READ the image
             author: template.videoInfo.author || 'Unknown',
             duration: template.videoInfo.duration || 30,
           },
@@ -361,12 +363,25 @@ export default function ReelEditor() {
         }),
       });
 
+      const result = await response.json();
+      console.log('Full API response:', JSON.stringify(result, null, 2));
+
       if (!response.ok) {
-        throw new Error('Analysis failed');
+        throw new Error(result.error || 'Analysis failed');
       }
 
-      const result = await response.json();
-      console.log('Re-analysis result:', result);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      // Check if we actually got thumbnail analyzed
+      if (!result.hadThumbnail) {
+        setReanalyzeStatus('Failed to fetch thumbnail from TikTok');
+        setTimeout(() => setReanalyzeStatus(''), 4000);
+        return;
+      }
+
+      setReanalyzeStatus('Reading text from image...');
 
       if (result.analysis) {
         const hookText = result.analysis.extractedText?.hookText;
@@ -972,23 +987,42 @@ export default function ReelEditor() {
                   </div>
                 </div>
 
-                {/* Re-analyze button for Intro */}
-                {location.locationId === 0 && location.expanded && (
-                  <div className="px-4 pb-2">
-                    <button
-                      onClick={handleReanalyze}
-                      disabled={reanalyzing}
-                      className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-[#8B5CF6]/20 border border-[#8B5CF6]/30 hover:bg-[#8B5CF6]/30 transition-colors disabled:opacity-50"
-                    >
-                      {reanalyzing ? (
-                        <Loader2 className="w-4 h-4 text-[#8B5CF6] animate-spin" />
-                      ) : (
-                        <RefreshCw className="w-4 h-4 text-[#8B5CF6]" />
-                      )}
-                      <span className="text-xs font-medium text-[#8B5CF6]">
-                        {reanalyzing ? 'Analyzing...' : reanalyzeStatus || 'Re-analyze thumbnail for intro text'}
-                      </span>
-                    </button>
+                {/* Thumbnail preview and re-analyze for Intro */}
+                {location.locationId === 0 && location.expanded && template?.videoInfo?.thumbnail && (
+                  <div className="px-4 pb-3">
+                    <div className="bg-[#2D2640] rounded-xl p-3">
+                      <p className="text-xs text-white/50 mb-2">Original thumbnail - extract intro text from this:</p>
+                      <div className="flex gap-3">
+                        {/* Thumbnail preview */}
+                        <div
+                          className="w-24 h-32 rounded-lg bg-cover bg-center flex-shrink-0 border border-white/10"
+                          style={{ backgroundImage: `url(${template.videoInfo.thumbnail})` }}
+                        />
+                        {/* Extract button and status */}
+                        <div className="flex-1 flex flex-col justify-center">
+                          <button
+                            onClick={handleReanalyze}
+                            disabled={reanalyzing}
+                            className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#8B5CF6] hover:bg-[#7C4FE0] transition-colors disabled:opacity-50"
+                          >
+                            {reanalyzing ? (
+                              <Loader2 className="w-4 h-4 text-white animate-spin" />
+                            ) : (
+                              <Sparkles className="w-4 h-4 text-white" />
+                            )}
+                            <span className="text-sm font-semibold text-white">
+                              {reanalyzing ? 'Reading...' : 'Extract Text'}
+                            </span>
+                          </button>
+                          {reanalyzeStatus && (
+                            <p className="text-xs text-[#8B5CF6] mt-2 text-center">{reanalyzeStatus}</p>
+                          )}
+                          <p className="text-[10px] text-white/30 mt-2 text-center">
+                            AI will read the text overlay from this image
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 

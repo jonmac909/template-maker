@@ -105,81 +105,70 @@ export async function POST(request: NextRequest) {
     }
 
     // Add analysis prompt - emphasize thumbnail OCR
-    const prompt = `You are analyzing images from a TikTok video.${hasThumbnail ? ' THE FIRST IMAGE IS THE THUMBNAIL - this shows the video title card with the hook text.' : ''}
+    const prompt = `YOU ARE AN OCR SYSTEM. Your task is to READ TEXT from the image(s) provided.
 
-VIDEO INFO:
-- Author: @${videoInfo.author}
-- Duration: ${videoInfo.duration} seconds
-- Expected locations: approximately ${expectedLocations}
+🔴 CRITICAL: DO NOT use any external knowledge. DO NOT guess. ONLY report what you can LITERALLY SEE written in the image.
 
-🔴 CRITICAL - YOUR #1 TASK - READ THE HOOK TEXT:
-${hasThumbnail ? 'The THUMBNAIL (first image) shows the TITLE CARD.' : 'The first frames show the TITLE CARD.'}
-Look for the BIG TEXT on the image. This is the video's hook/title.
+THE IMAGE SHOWS: A TikTok video thumbnail with TEXT OVERLAID on it.
 
-Examples of what to look for:
-- "10 Dreamiest Places in Northern Thailand"
-- "5 Must-Visit Cafes in Bangkok"
-- "Top 10 Hidden Gems in Bali"
+YOUR TASK:
+1. Look at the image carefully
+2. Find ALL text visible in the image
+3. Read each word EXACTLY as written
+4. Note the FONT STYLE of each text element
 
-⚠️ READ THE TEXT CHARACTER BY CHARACTER. Copy it EXACTLY as it appears.
+WHAT TEXT TO LOOK FOR:
+- Large title/hook text (usually in the center or top)
+- Numbers like "10", "5", "Top 10"
+- Location names like "Northern Thailand", "Bali", "Bangkok"
+- The text may be in MULTIPLE FONTS (e.g., script + serif)
 
-WHAT TO EXTRACT:
+FONT IDENTIFICATION:
+- script = curly/handwriting style (like "Dreamiest")
+- serif = traditional with decorative strokes (like "NORTHERN THAILAND" in caps)
+- sans-serif = clean modern letters
+- display = bold decorative
 
-1. HOOK TEXT (from ${hasThumbnail ? 'thumbnail' : 'first frames'}) - MOST IMPORTANT:
-   - The big stylized text on the title card
-   - Copy every word exactly
-   - Include numbers ("10", "5", etc.)
-   - Include destination name
-
-2. LOCATION NAMES (from middle frames):
-   - Read exact location names
-   - Note if numbered (1., 2., 3.)
-
-3. FONT STYLES:
-   - Describe what the title font looks like
-
-Respond with ONLY valid JSON:
+Respond with ONLY this JSON:
 
 {
   "extractedText": {
-    "hookText": "COPY THE EXACT BIG TEXT FROM THE ${hasThumbnail ? 'THUMBNAIL' : 'FIRST FRAMES'} HERE",
-    "locationNames": ["location names you see"],
-    "outroText": "CTA text or null"
+    "hookText": "THE EXACT TEXT YOU READ FROM THE IMAGE - WORD FOR WORD",
+    "locationNames": [],
+    "outroText": null
   },
   "extractedFonts": {
     "titleFont": {
       "style": "script|serif|sans-serif|display",
       "weight": "normal|bold",
-      "description": "describe the title font"
+      "description": "what the main title font looks like"
     },
     "locationFont": {
       "style": "script|serif|sans-serif|display",
       "weight": "normal|bold",
-      "description": "describe location text font"
+      "description": "what the location/subtitle font looks like"
     }
   },
   "visualStyle": {
     "overall": "elegant|bold|minimal|playful|cinematic|vintage|modern",
-    "colors": ["#hex1", "#hex2"],
+    "colors": ["primary color hex", "secondary color hex"],
     "textPosition": "top|center|bottom"
   },
   "locations": [
     {
       "locationId": 0,
       "locationName": "Intro",
-      "textOverlay": "THE EXACT HOOK TEXT YOU READ FROM THE IMAGE",
+      "textOverlay": "COPY EXACT TEXT FROM IMAGE HERE",
       "timestamp": 0
-    },
-    {
-      "locationId": 1,
-      "locationName": "location name",
-      "textOverlay": "1. location name",
-      "timestamp": 2
     }
   ]
 }
 
-🔴 REMEMBER: The hookText and locations[0].textOverlay MUST be the actual text you READ from the image. DO NOT make up or paraphrase the text.`;
+🔴 IMPORTANT:
+- hookText MUST be the ACTUAL words visible in the image
+- If the image shows "10 Dreamiest Places NORTHERN THAILAND", write EXACTLY that
+- Do NOT paraphrase or change the wording
+- Include line breaks if the text is on multiple lines`;
 
     messageContent.push({ type: 'text', text: prompt });
 
