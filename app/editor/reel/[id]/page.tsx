@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Sparkles, Check, Clock, ChevronDown, ChevronUp, Pencil, X, Type, Save, Plus, RefreshCw, Loader2, Image, Wand2 } from 'lucide-react';
+import { ArrowLeft, Sparkles, Check, Clock, ChevronDown, ChevronUp, Pencil, X, Type, Save, Plus, RefreshCw, Loader2, Image as ImageIcon, Wand2 } from 'lucide-react';
 import { getFontNames, addFontsToLibrary, initializeFontLibrary, trackFontUsage, addCustomFont, loadGoogleFonts } from '../../../lib/fontLibrary';
 
 interface TextStyle {
@@ -981,7 +981,7 @@ export default function ReelEditor() {
               <div className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#8B5CF6]">
-                    <Image className="w-5 h-5 text-white" />
+                    <ImageIcon className="w-5 h-5 text-white" />
                   </div>
                   <div>
                     <h3 className="text-sm font-semibold text-white">Thumbnail</h3>
