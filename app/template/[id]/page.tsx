@@ -310,6 +310,16 @@ export default function TemplateBreakdown() {
               Draft
             </span>
           )}
+          {(template as any).extractionMethod === 'fallback-database' && (
+            <span className="px-2 py-0.5 rounded-md bg-red-500/20 text-red-400 text-[10px] font-semibold uppercase">
+              OCR Failed
+            </span>
+          )}
+          {(template as any).extractionMethod === 'claude-vision' && (
+            <span className="px-2 py-0.5 rounded-md bg-green-500/20 text-green-400 text-[10px] font-semibold uppercase">
+              OCR OK
+            </span>
+          )}
           <h2 className="text-[15px] font-semibold text-white">Template Preview</h2>
         </div>
         <div className="w-9 h-9" />
