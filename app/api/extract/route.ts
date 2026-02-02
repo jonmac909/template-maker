@@ -444,13 +444,21 @@ async function getTikTokVideoInfo(url: string): Promise<{
   videoUrl: string;
   allCovers?: string[];
 }> {
+  // Extract video ID and username from URL
+  const videoIdMatch = url.match(/video\/(\d+)/);
+  const videoId = videoIdMatch ? videoIdMatch[1] : '';
+  const usernameMatch = url.match(/@([^/]+)/);
+  const username = usernameMatch ? usernameMatch[1] : 'creator';
+
+  console.log(`Extracting video: ID=${videoId}, user=@${username}`);
+
   // Method 1: Try TikWM API first
   try {
     console.log('Method 1: Trying TikWM API...');
     const apiUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     const response = await fetch(apiUrl, {
       headers: {
@@ -464,6 +472,7 @@ async function getTikTokVideoInfo(url: string): Promise<{
 
     if (response.ok) {
       const data = await response.json();
+      console.log('TikWM response code:', data.code, 'msg:', data.msg);
 
       if (data.code === 0 && data.data) {
         const videoData = data.data;
@@ -475,7 +484,6 @@ async function getTikTokVideoInfo(url: string): Promise<{
           ai_dynamic_cover: !!videoData.ai_dynamic_cover,
         });
 
-        // Collect all available thumbnail/cover images for better analysis
         const allCovers: string[] = [];
         if (videoData.origin_cover) allCovers.push(videoData.origin_cover);
         if (videoData.cover) allCovers.push(videoData.cover);
@@ -484,16 +492,52 @@ async function getTikTokVideoInfo(url: string): Promise<{
 
         return {
           title: videoData.title || 'TikTok Video',
-          author: videoData.author?.nickname || videoData.author?.unique_id || 'Creator',
+          author: videoData.author?.nickname || videoData.author?.unique_id || username,
           duration: videoData.duration || 30,
-          thumbnail: videoData.origin_cover || videoData.cover || '', // Prefer origin_cover
+          thumbnail: videoData.origin_cover || videoData.cover || '',
           videoUrl: videoData.play || videoData.hdplay || '',
-          allCovers, // Pass all available covers for multi-frame analysis
+          allCovers,
         };
+      } else {
+        console.log('TikWM returned error code:', data.code, data.msg);
       }
     }
   } catch (error) {
     console.log('TikWM API failed:', error instanceof Error ? error.message : error);
+  }
+
+  // Method 1b: Try TikWM with POST method (sometimes works better)
+  try {
+    console.log('Method 1b: Trying TikWM POST...');
+    const response = await fetch('https://www.tikwm.com/api/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      },
+      body: `url=${encodeURIComponent(url)}&hd=1`,
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log('TikWM POST response code:', data.code);
+
+      if (data.code === 0 && data.data) {
+        const videoData = data.data;
+        console.log('TikWM POST success!');
+
+        return {
+          title: videoData.title || 'TikTok Video',
+          author: videoData.author?.nickname || videoData.author?.unique_id || username,
+          duration: videoData.duration || 30,
+          thumbnail: videoData.origin_cover || videoData.cover || '',
+          videoUrl: videoData.play || videoData.hdplay || '',
+          allCovers: [videoData.origin_cover, videoData.cover].filter(Boolean),
+        };
+      }
+    }
+  } catch (error) {
+    console.log('TikWM POST failed:', error instanceof Error ? error.message : error);
   }
 
   // Method 2: Try cobalt.tools API (yt-dlp wrapper)

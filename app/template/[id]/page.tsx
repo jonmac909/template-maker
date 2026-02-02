@@ -78,8 +78,9 @@ export default function TemplateBreakdown() {
 
   // Auto-trigger deep analysis when template loads if not yet analyzed
   useEffect(() => {
-    if (template && !template.deepAnalyzed && template.videoInfo?.videoUrl && !deepAnalyzing) {
-      // Auto-start deep analysis to extract actual text from video frames
+    // Trigger if we have EITHER a video URL OR a thumbnail
+    const hasMedia = template?.videoInfo?.videoUrl || template?.videoInfo?.thumbnail;
+    if (template && !template.deepAnalyzed && hasMedia && !deepAnalyzing) {
       handleDeepAnalyze();
     }
   }, [template?.id, template?.deepAnalyzed]);
