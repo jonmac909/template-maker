@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Use OpenRouter as gateway to Claude
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.OAUTH_TOKEN;
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+// Use OpenAI API
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
 interface FrameData {
   timestamp: number;
@@ -220,12 +220,12 @@ Respond with ONLY this JSON:
 
     messageContent.push({ type: 'text', text: prompt });
 
-    // Call Claude Vision API via OpenRouter gateway
-    console.log('Calling OpenRouter API with Claude model...');
-    console.log('API Key present:', !!OPENROUTER_API_KEY, OPENROUTER_API_KEY ? `(${OPENROUTER_API_KEY.substring(0, 10)}...)` : '');
+    // Call OpenAI Vision API
+    console.log('Calling OpenAI API with GPT-4o...');
+    console.log('API Key present:', !!OPENAI_API_KEY);
 
-    // Convert message content to OpenRouter format
-    const openRouterContent = messageContent.map(item => {
+    // Convert message content to OpenAI format
+    const openAIContent = messageContent.map(item => {
       if (item.type === 'text') {
         return { type: 'text', text: item.text };
       } else if (item.type === 'image') {
@@ -239,34 +239,32 @@ Respond with ONLY this JSON:
       return item;
     });
 
-    const openRouterResponse = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+    const openAIResponse = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://template-maker-one.vercel.app',
-        'X-Title': 'Template Maker'
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'anthropic/claude-3.5-sonnet',
+        model: 'gpt-4o',
         max_tokens: 4096,
         messages: [{
           role: 'user',
-          content: openRouterContent
+          content: openAIContent
         }]
       })
     });
 
-    if (!openRouterResponse.ok) {
-      const errorData = await openRouterResponse.json().catch(() => ({}));
-      console.error('OpenRouter API error:', openRouterResponse.status, JSON.stringify(errorData));
-      throw new Error(`OpenRouter API error: ${openRouterResponse.status} - ${JSON.stringify(errorData)}`);
+    if (!openAIResponse.ok) {
+      const errorData = await openAIResponse.json().catch(() => ({}));
+      console.error('OpenAI API error:', openAIResponse.status, JSON.stringify(errorData));
+      throw new Error(`OpenAI API error: ${openAIResponse.status} - ${JSON.stringify(errorData)}`);
     }
 
-    const openRouterData = await openRouterResponse.json();
-    const responseText = openRouterData.choices?.[0]?.message?.content || '';
+    const openAIData = await openAIResponse.json();
+    const responseText = openAIData.choices?.[0]?.message?.content || '';
 
-    console.log('Claude response via OpenRouter:', responseText.substring(0, 500));
+    console.log('GPT-4o response:', responseText.substring(0, 500));
 
     // Parse JSON from response
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
