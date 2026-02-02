@@ -278,23 +278,23 @@ ${clips.map((clip, idx) => `            <gap name="Placeholder ${idx + 1} - ${cl
           <span className="text-base font-semibold text-white">Download to Phone</span>
         </button>
 
-        {/* Export to CapCut Button */}
-        <button
-          onClick={handleExportCapCut}
-          className="w-full h-[52px] flex items-center justify-center gap-2 rounded-2xl bg-[#2D2640]"
-        >
-          <Download className="w-5 h-5 text-white" />
-          <span className="text-base font-medium text-white">Export to CapCut</span>
-        </button>
-
-        {/* Export to Final Cut Pro Button */}
-        <button
-          onClick={handleExportFinalCut}
-          className="w-full h-[52px] flex items-center justify-center gap-2 rounded-2xl bg-[#2D2640]"
-        >
-          <FileVideo className="w-5 h-5 text-white" />
-          <span className="text-base font-medium text-white">Export to Final Cut Pro</span>
-        </button>
+        {/* Export Buttons - Side by Side */}
+        <div className="flex gap-2">
+          <button
+            onClick={handleExportCapCut}
+            className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-xl bg-[#2D2640]"
+          >
+            <Download className="w-4 h-4 text-white/80" />
+            <span className="text-sm font-medium text-white/80">CapCut</span>
+          </button>
+          <button
+            onClick={handleExportFinalCut}
+            className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-xl bg-[#2D2640]"
+          >
+            <FileVideo className="w-4 h-4 text-white/80" />
+            <span className="text-sm font-medium text-white/80">Final Cut</span>
+          </button>
+        </div>
 
         {/* Save to Library Button */}
         <button
