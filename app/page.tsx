@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Settings, House, Plus, FileText, Play, Sparkles, Edit3, X, Trash2 } from 'lucide-react';
 
+// Version for debugging deployment - if you see this, the new code is deployed
+const APP_VERSION = 'v2.0.2-fix-drafts';
+
 interface SavedTemplate {
   id: string;
   title: string;
@@ -51,10 +54,22 @@ export default function Home() {
           const locationsCount = data.locations?.length || 0;
           const scenesCount = data.locations?.reduce((sum: number, loc: any) => sum + (loc.scenes?.length || 0), 0) || 0;
 
-          // Skip corrupted/empty templates (0 locations AND 0 scenes)
-          if (locationsCount === 0 && scenesCount === 0) {
-            console.log('Skipping corrupted template:', templateId);
-            // Auto-delete corrupted templates
+          // Skip and delete corrupted templates:
+          // - 0 locations AND 0 scenes
+          // - Missing videoInfo
+          // - "Untitled Template" title (indicates corrupted/incomplete extraction)
+          const isCorrupted = (locationsCount === 0 && scenesCount === 0) ||
+                             !data.videoInfo ||
+                             !data.videoInfo.title ||
+                             data.videoInfo.title === 'Untitled Template';
+
+          if (isCorrupted) {
+            console.log('[v2.0.2] Auto-deleting corrupted template:', templateId, {
+              locationsCount,
+              scenesCount,
+              hasVideoInfo: !!data.videoInfo,
+              title: data.videoInfo?.title,
+            });
             localStorage.removeItem(key);
             continue;
           }
@@ -164,23 +179,39 @@ export default function Home() {
         throw new Error('Invalid response from server');
       }
 
-      console.log('Template ID:', data.templateId);
+      console.log(`[${APP_VERSION}] Template ID:`, data.templateId);
       setStatus('Saving template...');
+
+      // Validate template has required fields
+      if (!data.template.locations || data.template.locations.length === 0) {
+        console.error(`[${APP_VERSION}] Invalid template - no locations!`);
+        throw new Error('Extraction failed - no locations found');
+      }
 
       // Store template in localStorage as DRAFT (until user saves it)
       const templateWithDraft = {
         ...data.template,
-        isDraft: true,
+        isDraft: true,  // CRITICAL: Mark as draft!
+        isEdit: false,  // Not an edit
         createdAt: new Date().toISOString(),
       };
+
+      console.log(`[${APP_VERSION}] Saving as DRAFT:`, {
+        id: data.templateId,
+        isDraft: templateWithDraft.isDraft,
+        locationsCount: templateWithDraft.locations?.length,
+        title: templateWithDraft.videoInfo?.title,
+      });
+
       localStorage.setItem(`template_${data.templateId}`, JSON.stringify(templateWithDraft));
-      console.log('Saved to localStorage');
+      console.log(`[${APP_VERSION}] Saved to localStorage`);
 
       // Reload saved data to show new template
       loadSavedData();
 
       // Switch to Drafts tab since new imports go to drafts
       setActiveTab('drafts');
+      console.log(`[${APP_VERSION}] Switched to drafts tab`);
 
       setStatus('Redirecting to preview...');
       // Go to template preview page first (then to editor)
@@ -344,9 +375,12 @@ export default function Home() {
     <div className="h-screen w-full flex flex-col bg-[var(--bg-page)]">
       {/* Nav Bar */}
       <div className="flex items-center justify-between h-14 px-6 pt-4">
-        <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
-          TemplateMaker
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+            TemplateMaker
+          </h1>
+          <span className="text-[9px] text-[var(--text-tertiary)] bg-[var(--bg-card)] px-1.5 py-0.5 rounded">{APP_VERSION}</span>
+        </div>
         <button className="w-10 h-10 flex items-center justify-center rounded-[20px] bg-[var(--bg-card)]">
           <Settings className="w-5 h-5" style={{ color: 'var(--text-primary)' }} />
         </button>

@@ -97,6 +97,13 @@ export default function TemplateBreakdown() {
       if (!response.ok) throw new Error('Template not found');
 
       const data = await response.json();
+
+      // Validate the template has required data before saving
+      if (!data.locations || data.locations.length === 0) {
+        console.error('API returned invalid template - missing locations');
+        throw new Error('Invalid template data');
+      }
+
       setTemplate(data);
       localStorage.setItem(`template_${params.id}`, JSON.stringify(data));
     } catch (error) {
