@@ -402,6 +402,43 @@ export async function POST(request: NextRequest) {
     const analysis = await analyzeVideoWithClaude(videoInfo, url);
     const detectedFonts = detectFontsForVideo(videoInfo, url);
 
+    // Try to fetch and store thumbnail as base64 for later use
+    let thumbnailBase64 = '';
+    if (videoInfo.thumbnail) {
+      console.log('Fetching thumbnail to store as base64...');
+      try {
+        // Try same fetch methods as analyzeVideoWithClaude
+        const fetchMethods = [
+          async () => fetch(videoInfo.thumbnail, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+              'Referer': 'https://www.tiktok.com/',
+            },
+          }),
+          async () => fetch(`https://wsrv.nl/?url=${encodeURIComponent(videoInfo.thumbnail)}&w=720&output=jpg`),
+          async () => fetch(`https://images.weserv.nl/?url=${encodeURIComponent(videoInfo.thumbnail)}&w=720&output=jpg`),
+        ];
+
+        for (const fetchMethod of fetchMethods) {
+          try {
+            const response = await fetchMethod();
+            if (response.ok) {
+              const buffer = await response.arrayBuffer();
+              if (buffer.byteLength > 1000) {
+                thumbnailBase64 = Buffer.from(buffer).toString('base64');
+                console.log('Thumbnail stored as base64, size:', thumbnailBase64.length);
+                break;
+              }
+            }
+          } catch (e) {
+            // Try next method
+          }
+        }
+      } catch (e) {
+        console.log('Failed to store thumbnail as base64:', e);
+      }
+    }
+
     const templateId = generateTemplateId();
     const template = {
       id: templateId,
@@ -412,6 +449,7 @@ export async function POST(request: NextRequest) {
         author: videoInfo.author,
         duration: videoInfo.duration,
         thumbnail: videoInfo.thumbnail,
+        thumbnailBase64: thumbnailBase64 || undefined, // Store base64 for later use
         videoUrl: videoInfo.videoUrl,
       },
       ...analysis,

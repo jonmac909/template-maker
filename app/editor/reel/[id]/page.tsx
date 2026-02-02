@@ -393,25 +393,33 @@ export default function ReelEditor() {
 
   // Re-analyze thumbnail to extract intro text and fonts
   const handleReanalyze = async () => {
-    if (!template?.videoInfo?.thumbnail) {
+    if (!template?.videoInfo?.thumbnail && !template?.videoInfo?.thumbnailBase64) {
       setReanalyzeStatus('No thumbnail available');
       setTimeout(() => setReanalyzeStatus(''), 3000);
       return;
     }
 
     setReanalyzing(true);
-    setReanalyzeStatus('Converting thumbnail...');
+    setReanalyzeStatus('Preparing thumbnail...');
 
     try {
-      // Try client-side conversion first, fall back to server-side fetch
-      let thumbnailBase64 = await imageUrlToBase64(template.videoInfo.thumbnail);
+      // Priority: use stored base64 > try client-side conversion > fall back to server fetch
+      let thumbnailBase64 = (template.videoInfo as any).thumbnailBase64 || null;
       let useServerFetch = false;
 
-      if (!thumbnailBase64) {
-        console.log('Client-side conversion failed, will use server-side fetch');
-        useServerFetch = true;
+      if (thumbnailBase64) {
+        console.log('Using stored thumbnail base64, length:', thumbnailBase64.length);
       } else {
-        console.log('Thumbnail converted to base64, length:', thumbnailBase64.length);
+        // Try client-side conversion
+        setReanalyzeStatus('Converting thumbnail...');
+        thumbnailBase64 = await imageUrlToBase64(template.videoInfo.thumbnail);
+
+        if (!thumbnailBase64) {
+          console.log('Client-side conversion failed, will use server-side fetch');
+          useServerFetch = true;
+        } else {
+          console.log('Thumbnail converted to base64, length:', thumbnailBase64.length);
+        }
       }
 
       setReanalyzeStatus('Sending to AI for analysis...');
@@ -502,10 +510,20 @@ export default function ReelEditor() {
       }
     } catch (error) {
       console.error('Re-analysis failed:', error);
-      setReanalyzeStatus('Analysis failed - try again');
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.log('Error message:', errorMsg);
+
+      // Show user-friendly error
+      if (errorMsg.includes('Could not load thumbnail') || errorMsg.includes('No frames')) {
+        setReanalyzeStatus('Thumbnail expired. Re-extract template to refresh.');
+      } else if (errorMsg.includes('API key') || errorMsg.includes('authentication')) {
+        setReanalyzeStatus('Server config error. Contact support.');
+      } else {
+        setReanalyzeStatus(errorMsg.length > 40 ? 'Analysis failed - try again' : errorMsg);
+      }
     } finally {
       setReanalyzing(false);
-      setTimeout(() => setReanalyzeStatus(''), 4000);
+      setTimeout(() => setReanalyzeStatus(''), 5000);
     }
   };
 

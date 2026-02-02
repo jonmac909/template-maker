@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic();
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
 interface FrameData {
   timestamp: number;
@@ -24,12 +26,14 @@ interface AnalysisRequest {
 // Uses image proxy services as fallback since TikTok URLs expire
 async function fetchThumbnailFromUrl(url: string): Promise<string | null> {
   const methods = [
-    // Method 1: Direct fetch
+    // Method 1: Direct fetch with TikTok-like headers
     async () => {
       console.log('Method 1: Direct fetch from:', url.substring(0, 60));
       const response = await fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://www.tiktok.com/',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
         },
       });
       if (!response.ok) throw new Error(`Direct fetch failed: ${response.status}`);
@@ -37,7 +41,7 @@ async function fetchThumbnailFromUrl(url: string): Promise<string | null> {
     },
     // Method 2: weserv.nl proxy
     async () => {
-      const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg`;
+      const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg&w=720`;
       console.log('Method 2: wsrv.nl proxy');
       const response = await fetch(proxyUrl);
       if (!response.ok) throw new Error(`wsrv.nl failed: ${response.status}`);
@@ -45,7 +49,7 @@ async function fetchThumbnailFromUrl(url: string): Promise<string | null> {
     },
     // Method 3: images.weserv.nl proxy
     async () => {
-      const proxyUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}&output=jpg`;
+      const proxyUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}&output=jpg&w=720`;
       console.log('Method 3: images.weserv.nl proxy');
       const response = await fetch(proxyUrl);
       if (!response.ok) throw new Error(`images.weserv.nl failed: ${response.status}`);
@@ -57,6 +61,11 @@ async function fetchThumbnailFromUrl(url: string): Promise<string | null> {
     try {
       const response = await method();
       const buffer = await response.arrayBuffer();
+      // Skip too-small responses (error pages)
+      if (buffer.byteLength < 1000) {
+        console.log('Response too small, likely not an image:', buffer.byteLength);
+        continue;
+      }
       const base64 = Buffer.from(buffer).toString('base64');
       console.log('Thumbnail fetched successfully, size:', base64.length);
       return base64;
@@ -65,7 +74,7 @@ async function fetchThumbnailFromUrl(url: string): Promise<string | null> {
     }
   }
 
-  console.error('All thumbnail fetch methods failed');
+  console.error('All thumbnail fetch methods failed for URL:', url.substring(0, 60));
   return null;
 }
 
@@ -74,15 +83,29 @@ export async function POST(request: NextRequest) {
     const body: AnalysisRequest = await request.json();
     const { thumbnailBase64: providedBase64, thumbnailUrl, frames, videoInfo, expectedLocations = 5 } = body;
 
+    console.log('=== ANALYZE-FRAMES REQUEST ===');
+    console.log('Has providedBase64:', !!providedBase64, providedBase64 ? `(${providedBase64.length} chars)` : '');
+    console.log('Has thumbnailUrl:', !!thumbnailUrl, thumbnailUrl ? thumbnailUrl.substring(0, 60) : '');
+    console.log('Frames count:', frames?.length || 0);
+
     // Try to get thumbnail: prefer base64 if provided, otherwise fetch from URL
     let thumbnailBase64 = providedBase64;
     if (!thumbnailBase64 && thumbnailUrl) {
+      console.log('No base64 provided, attempting to fetch from URL...');
       thumbnailBase64 = await fetchThumbnailFromUrl(thumbnailUrl) || undefined;
+      if (thumbnailBase64) {
+        console.log('Successfully fetched thumbnail from URL');
+      } else {
+        console.log('Failed to fetch thumbnail from URL');
+      }
     }
 
     // We need either thumbnail or frames
     if ((!frames || frames.length === 0) && !thumbnailBase64) {
-      return NextResponse.json({ error: 'No frames or thumbnail provided' }, { status: 400 });
+      console.log('ERROR: No thumbnail or frames available');
+      return NextResponse.json({
+        error: 'Could not load thumbnail. Try re-extracting the template to get a fresh copy.'
+      }, { status: 400 });
     }
 
     const hasThumbnail = !!thumbnailBase64;
@@ -229,8 +252,20 @@ Respond with ONLY this JSON:
     });
   } catch (error) {
     console.error('Frame analysis error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Analysis failed';
+
+    // Provide more specific error messages
+    let userMessage = errorMessage;
+    if (errorMessage.includes('api_key') || errorMessage.includes('authentication') || errorMessage.includes('401')) {
+      userMessage = 'API key error - please check server configuration';
+    } else if (errorMessage.includes('rate') || errorMessage.includes('429')) {
+      userMessage = 'Too many requests - please wait a moment and try again';
+    } else if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
+      userMessage = 'Request timed out - please try again';
+    }
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Analysis failed' },
+      { error: userMessage },
       { status: 500 }
     );
   }

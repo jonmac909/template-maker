@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Play, Pause, Scissors, Type, Music, Eye, Film, Loader2 } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Scissors, Type, Music, Eye, Film, Loader2, Plus, X, Upload, Check } from 'lucide-react';
 import VideoTrimmer from '../../../components/VideoTrimmer';
 import { getVideoUrl } from '../../../lib/videoStorage';
 
