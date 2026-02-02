@@ -9,7 +9,8 @@ interface FrameData {
 }
 
 interface AnalysisRequest {
-  thumbnailBase64?: string; // Thumbnail fetched from browser (priority!)
+  thumbnailBase64?: string; // Thumbnail as base64 (if client could fetch it)
+  thumbnailUrl?: string; // Thumbnail URL - server will fetch it (avoids CORS)
   frames: FrameData[];
   videoInfo: {
     title: string;
@@ -19,10 +20,39 @@ interface AnalysisRequest {
   expectedLocations?: number;
 }
 
+// Helper to fetch thumbnail from URL (server-side, no CORS issues)
+async function fetchThumbnailFromUrl(url: string): Promise<string | null> {
+  try {
+    console.log('Fetching thumbnail from URL:', url.substring(0, 80));
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      },
+    });
+    if (!response.ok) {
+      console.error('Thumbnail fetch failed:', response.status);
+      return null;
+    }
+    const buffer = await response.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+    console.log('Thumbnail fetched successfully, size:', base64.length);
+    return base64;
+  } catch (error) {
+    console.error('Failed to fetch thumbnail:', error);
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: AnalysisRequest = await request.json();
-    const { thumbnailBase64, frames, videoInfo, expectedLocations = 5 } = body;
+    const { thumbnailBase64: providedBase64, thumbnailUrl, frames, videoInfo, expectedLocations = 5 } = body;
+
+    // Try to get thumbnail: prefer base64 if provided, otherwise fetch from URL
+    let thumbnailBase64 = providedBase64;
+    if (!thumbnailBase64 && thumbnailUrl) {
+      thumbnailBase64 = await fetchThumbnailFromUrl(thumbnailUrl) || undefined;
+    }
 
     // We need either thumbnail or frames
     if ((!frames || frames.length === 0) && !thumbnailBase64) {

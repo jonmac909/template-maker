@@ -157,48 +157,6 @@ export default function TemplateBreakdown() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  // Helper to fetch thumbnail as base64 from browser (avoids CORS issues)
-  const fetchThumbnailAsBase64 = async (thumbnailUrl: string): Promise<string | null> => {
-    if (!thumbnailUrl || !isBrowser()) return null;
-
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-            const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
-            console.log('Thumbnail fetched as base64, size:', base64.length);
-            resolve(base64);
-          } else {
-            resolve(null);
-          }
-        } catch (e) {
-          console.error('Failed to convert thumbnail to base64:', e);
-          resolve(null);
-        }
-      };
-
-      img.onerror = () => {
-        console.log('Failed to load thumbnail image');
-        resolve(null);
-      };
-
-      // Try loading the image
-      img.src = thumbnailUrl;
-
-      // Timeout after 5 seconds
-      setTimeout(() => resolve(null), 5000);
-    });
-  };
-
   const handleDeepAnalyze = async () => {
     if (!template || !isBrowser()) return;
 
@@ -212,21 +170,14 @@ export default function TemplateBreakdown() {
     }
 
     setDeepAnalyzing(true);
-    setAnalysisStatus('Loading thumbnail...');
+    setAnalysisStatus('Preparing analysis...');
 
     try {
       const duration = template.totalDuration || template.videoInfo?.duration || 30;
 
-      // FIRST: Try to get thumbnail as base64 from browser (this is the key fix!)
-      let thumbnailBase64: string | null = null;
-      if (thumbnailUrl) {
-        console.log('Fetching thumbnail from browser:', thumbnailUrl.substring(0, 80));
-        thumbnailBase64 = await fetchThumbnailAsBase64(thumbnailUrl);
-        if (thumbnailBase64) {
-          console.log('Thumbnail captured successfully!');
-          setAnalysisStatus('Thumbnail captured! Extracting video frames...');
-        }
-      }
+      // We'll send the thumbnail URL to the server (server can fetch it without CORS issues)
+      // No need to fetch it client-side anymore
+      console.log('Will send thumbnail URL to server for analysis:', thumbnailUrl?.substring(0, 80));
 
       // Generate timestamps for frame extraction
       const timestamps = generateFrameTimestamps(duration, {
@@ -252,20 +203,21 @@ export default function TemplateBreakdown() {
         }
       }
 
-      // We need at least thumbnail OR frames
-      if (!thumbnailBase64 && frames.length === 0) {
+      // We need at least thumbnail URL OR frames
+      if (!thumbnailUrl && frames.length === 0) {
         throw new Error('Could not extract thumbnail or frames');
       }
 
-      const frameCount = frames.length + (thumbnailBase64 ? 1 : 0);
+      const frameCount = frames.length + (thumbnailUrl ? 1 : 0);
       setAnalysisStatus(`Analyzing ${frameCount} images with AI...`);
 
-      // Send thumbnail + frames to API for analysis
+      // Send thumbnail URL + frames to API for analysis
+      // Server will fetch the thumbnail (avoids CORS issues)
       const response = await fetch('/api/analyze-frames', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          thumbnailBase64, // NEW: Include thumbnail from browser!
+          thumbnailUrl, // Server will fetch this URL directly (no CORS issues)
           frames,
           videoInfo: {
             title: template.videoInfo?.title || 'Unknown',
