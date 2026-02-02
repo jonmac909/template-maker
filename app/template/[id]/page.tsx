@@ -469,7 +469,7 @@ export default function TemplateBreakdown() {
                     />
                     <span className="text-sm font-semibold text-white">{location.locationName}</span>
                   </div>
-                  <span className="text-xs text-white/50">{location.totalDuration}s</span>
+                  <span className="text-xs text-white/50">{Number(location.totalDuration.toFixed(1))}s</span>
                 </div>
                 <div className="flex gap-1.5 flex-wrap">
                   {location.scenes.map((scene) => (
@@ -478,7 +478,7 @@ export default function TemplateBreakdown() {
                       className="px-2 py-1 rounded-md text-[10px] text-white flex items-center gap-1"
                       style={{ backgroundColor: LOCATION_COLORS[locIdx % LOCATION_COLORS.length] + '40' }}
                     >
-                      {scene.duration}s
+                      {Number(scene.duration.toFixed(1))}s
                       {scene.textOverlay && <Type className="w-2.5 h-2.5" />}
                     </div>
                   ))}

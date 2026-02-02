@@ -935,7 +935,7 @@ export default function ReelEditor() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
             <Clock className="w-3 h-3 text-white/50" />
-            <span className="text-xs text-white/50">{template.totalDuration}s total</span>
+            <span className="text-xs text-white/50">{Number(template.totalDuration.toFixed(1))}s total</span>
           </div>
           <span className="text-xs text-white/50">•</span>
           <span className="text-xs text-white/50">{locations.length} locations</span>
@@ -1079,7 +1079,7 @@ export default function ReelEditor() {
                     <div className="text-left flex-1">
                       <h3 className="text-sm font-semibold text-white">{location.locationName}</h3>
                       <p className="text-xs text-white/50">
-                        {location.scenes.length} scenes • {location.totalDuration}s
+                        {location.scenes.length} scenes • {Number(location.totalDuration.toFixed(1))}s
                       </p>
                     </div>
                   </button>
@@ -1157,7 +1157,7 @@ export default function ReelEditor() {
                                   className="text-xs font-semibold px-2 py-0.5 rounded"
                                   style={{ backgroundColor: locationColor + '30', color: locationColor }}
                                 >
-                                  {scene.duration}s
+                                  {Number(scene.duration.toFixed(1))}s
                                 </span>
                                 {scene.filled && (
                                   <span className="text-[#14B8A6] text-xs">Added</span>

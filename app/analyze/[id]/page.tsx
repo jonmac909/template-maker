@@ -213,7 +213,7 @@ export default function AnalyzePage() {
                   style={{ backgroundImage: `url(${scene.thumbnail})` }}
                 />
                 <p className="text-[10px] text-white/50 text-center mt-1">
-                  {scene.duration}s
+                  {Number(scene.duration.toFixed(1))}s
                 </p>
               </div>
             ))}
