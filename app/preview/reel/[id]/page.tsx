@@ -2,7 +2,29 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Download, Save, CircleCheck, Play, Clock, MapPin, Film, Smartphone, FileVideo } from 'lucide-react';
+import { ArrowLeft, Download, Save, CircleCheck, Play, Clock, MapPin, Film, Smartphone, FileVideo, Loader2, AlertCircle } from 'lucide-react';
+import { getVideoBlob } from '../../../lib/videoStorage';
+import { loadFFmpeg, renderFullVideo, downloadBlob, type RenderProgress } from '../../../lib/ffmpegService';
+
+interface TextStyle {
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: string;
+  color: string;
+  hasEmoji: boolean;
+  emoji?: string;
+  emojiPosition?: 'before' | 'after' | 'both';
+  position: 'top' | 'center' | 'bottom';
+  alignment: 'left' | 'center' | 'right';
+}
+
+interface TrimData {
+  inTime: number;
+  outTime: number;
+  cropX: number;
+  cropY: number;
+  cropScale: number;
+}
 
 interface Template {
   id: string;
@@ -20,9 +42,21 @@ interface Template {
     scenes: Array<{
       id: number;
       duration: number;
+      textOverlay?: string | null;
+      textStyle?: TextStyle;
+      userVideoId?: string;
+      filled?: boolean;
+      trimData?: TrimData;
     }>;
     totalDuration: number;
   }>;
+}
+
+interface RenderState {
+  status: 'idle' | 'loading' | 'rendering' | 'complete' | 'error';
+  progress: RenderProgress | null;
+  error?: string;
+  videoUrl?: string;
 }
 
 export default function ReelPreview() {
@@ -30,6 +64,10 @@ export default function ReelPreview() {
   const router = useRouter();
   const [template, setTemplate] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
+  const [renderState, setRenderState] = useState<RenderState>({
+    status: 'idle',
+    progress: null,
+  });
 
   useEffect(() => {
     fetchTemplate();
@@ -57,63 +95,19 @@ export default function ReelPreview() {
     }
   };
 
-  const handleExportCapCut = () => {
-    if (!template) return;
-
-    // Build CapCut-compatible template structure
-    const capCutTemplate = {
-      name: template.videoInfo?.title || 'Untitled Template',
-      duration: Number(template.totalDuration.toFixed(1)),
-      tracks: {
-        video: template.locations.flatMap((loc, locIdx) =>
-          loc.scenes.map((scene, sceneIdx) => ({
-            id: `${locIdx}-${sceneIdx}`,
-            type: 'video_placeholder',
-            duration: Number(scene.duration.toFixed(1)),
-            locationId: loc.locationId,
-            locationName: loc.locationName,
-          }))
-        ),
-        text: template.locations.map((loc) => ({
-          id: `text-${loc.locationId}`,
-          type: 'text',
-          content: loc.locationName,
-          duration: Number(loc.totalDuration.toFixed(1)),
-        })),
-      },
-      metadata: {
-        exportedAt: new Date().toISOString(),
-        source: 'TemplateMaker',
-        originalAuthor: template.videoInfo?.author || 'Unknown',
-      },
-    };
-
-    // Download as JSON file
-    const blob = new Blob([JSON.stringify(capCutTemplate, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `capcut-template-${params.id}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   const handleExportFinalCut = () => {
     if (!template) return;
 
-    // Calculate total duration in frames (assuming 30fps)
     const fps = 30;
-    const totalFrames = Math.round(template.totalDuration * fps);
-
-    // Build clips data
     let currentFrame = 0;
     const clips: Array<{ name: string; startFrame: number; durationFrames: number; text: string }> = [];
 
     template.locations.forEach((loc) => {
       loc.scenes.forEach((scene) => {
-        const durationFrames = Math.round(scene.duration * fps);
+        const effectiveDuration = scene.trimData
+          ? scene.trimData.outTime - scene.trimData.inTime
+          : scene.duration;
+        const durationFrames = Math.round(effectiveDuration * fps);
         clips.push({
           name: loc.locationName,
           startFrame: currentFrame,
@@ -124,7 +118,6 @@ export default function ReelPreview() {
       });
     });
 
-    // Generate FCPXML
     const fcpxml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE fcpxml>
 <fcpxml version="1.10">
@@ -147,7 +140,6 @@ ${clips.map((clip, idx) => `            <gap name="Placeholder ${idx + 1} - ${cl
   </library>
 </fcpxml>`;
 
-    // Download as FCPXML file
     const blob = new Blob([fcpxml], { type: 'application/xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -162,15 +154,16 @@ ${clips.map((clip, idx) => `            <gap name="Placeholder ${idx + 1} - ${cl
   const handleExportDaVinci = () => {
     if (!template) return;
 
-    // DaVinci Resolve imports FCPXML well, so we use similar format
     const fps = 30;
-
     let currentFrame = 0;
     const clips: Array<{ name: string; startFrame: number; durationFrames: number }> = [];
 
     template.locations.forEach((loc) => {
       loc.scenes.forEach((scene) => {
-        const durationFrames = Math.round(scene.duration * fps);
+        const effectiveDuration = scene.trimData
+          ? scene.trimData.outTime - scene.trimData.inTime
+          : scene.duration;
+        const durationFrames = Math.round(effectiveDuration * fps);
         clips.push({
           name: loc.locationName,
           startFrame: currentFrame,
@@ -180,7 +173,6 @@ ${clips.map((clip, idx) => `            <gap name="Placeholder ${idx + 1} - ${cl
       });
     });
 
-    // Generate FCPXML (DaVinci Resolve compatible)
     const fcpxml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE fcpxml>
 <fcpxml version="1.9">
@@ -200,7 +192,6 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
   </library>
 </fcpxml>`;
 
-    // Download as XML file for DaVinci
     const blob = new Blob([fcpxml], { type: 'application/xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -212,19 +203,115 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
     URL.revokeObjectURL(url);
   };
 
-  const handleDownloadToPhone = () => {
-    alert('Merging videos and downloading to your phone library...');
-    // In production: merge all video clips, add text overlays, and trigger download
+  const handleRenderVideo = async () => {
+    if (!template) return;
+
+    setRenderState({
+      status: 'loading',
+      progress: { stage: 'loading', percent: 0, message: 'Initializing...' },
+    });
+
+    try {
+      // Load FFmpeg
+      await loadFFmpeg((progress) => {
+        setRenderState({ status: 'loading', progress });
+      });
+
+      setRenderState({
+        status: 'rendering',
+        progress: { stage: 'processing', percent: 0, message: 'Preparing clips...' },
+      });
+
+      // Collect all clips with their video data
+      const clipsData: Array<{
+        videoBlob: Blob;
+        trimData?: TrimData;
+        textOverlay?: string;
+        textStyle?: TextStyle;
+        duration: number;
+      }> = [];
+
+      for (const location of template.locations) {
+        for (const scene of location.scenes) {
+          if (scene.userVideoId) {
+            const blob = await getVideoBlob(scene.userVideoId);
+            if (blob) {
+              clipsData.push({
+                videoBlob: blob,
+                trimData: scene.trimData,
+                textOverlay: scene.textOverlay || location.locationName,
+                textStyle: scene.textStyle,
+                duration: scene.trimData
+                  ? scene.trimData.outTime - scene.trimData.inTime
+                  : scene.duration,
+              });
+            }
+          }
+        }
+      }
+
+      if (clipsData.length === 0) {
+        setRenderState({
+          status: 'error',
+          progress: null,
+          error: 'No video clips to render. Please add videos first.',
+        });
+        return;
+      }
+
+      // Render the full video
+      const finalBlob = await renderFullVideo(clipsData, (progress) => {
+        setRenderState({ status: 'rendering', progress });
+      });
+
+      // Create URL for preview/download
+      const videoUrl = URL.createObjectURL(finalBlob);
+
+      setRenderState({
+        status: 'complete',
+        progress: { stage: 'complete', percent: 100, message: 'Complete!' },
+        videoUrl,
+      });
+
+    } catch (error) {
+      console.error('Render failed:', error);
+      setRenderState({
+        status: 'error',
+        progress: null,
+        error: error instanceof Error ? error.message : 'Render failed',
+      });
+    }
   };
 
-  const handleSaveToLibrary = () => {
-    alert('Saved to your library!');
+  const handleDownloadRenderedVideo = () => {
+    if (renderState.videoUrl) {
+      const title = template?.videoInfo?.title || 'video';
+      const safeTitle = title.replace(/[^a-z0-9]/gi, '_').slice(0, 30);
+      downloadBlob(
+        new Blob([], { type: 'video/mp4' }), // This is just for the filename
+        `${safeTitle}.mp4`
+      );
+      // Actually download from the URL
+      const a = document.createElement('a');
+      a.href = renderState.videoUrl;
+      a.download = `${safeTitle}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
+
+  const handleSaveToMyEdits = () => {
+    if (template) {
+      const updatedTemplate = { ...template, isDraft: false, isEdit: true };
+      localStorage.setItem(`template_${params.id}`, JSON.stringify(updatedTemplate));
+    }
     router.push('/');
   };
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -241,12 +328,25 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
 
   const locations = template.locations || [];
   const totalScenes = locations.reduce((sum, loc) => sum + loc.scenes.length, 0);
+  const filledScenes = locations.reduce((sum, loc) =>
+    sum + loc.scenes.filter(s => s.filled || s.userVideoId).length, 0
+  );
   const locationCount = locations.filter(l => l.locationId > 0 && l.locationName !== 'Outro').length;
   const title = template.videoInfo?.title || 'Untitled Video';
 
+  // Calculate actual total duration based on trim data
+  const actualDuration = locations.reduce((sum, loc) =>
+    sum + loc.scenes.reduce((sceneSum, scene) =>
+      sceneSum + (scene.trimData
+        ? scene.trimData.outTime - scene.trimData.inTime
+        : scene.duration
+      ), 0
+    ), 0
+  );
+
   return (
     <div className="min-h-screen bg-black flex flex-col">
-      {/* Top Bar - matching Fill Your Template */}
+      {/* Top Bar */}
       <div className="flex items-center justify-between h-14 px-4 pt-4 pb-2">
         <button
           onClick={() => router.back()}
@@ -258,42 +358,56 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
         <div className="w-9" />
       </div>
 
-      {/* Video Preview - Larger */}
+      {/* Video Preview */}
       <div className="flex justify-center px-6 pt-4 pb-6">
         <div
           className="w-[220px] h-[390px] rounded-2xl relative overflow-hidden bg-[#1A1A2E] border border-[#8B5CF6]/30"
           style={{
-            backgroundImage: template.videoInfo?.thumbnail ? `url(${template.videoInfo.thumbnail})` : undefined,
+            backgroundImage: renderState.videoUrl
+              ? undefined
+              : template.videoInfo?.thumbnail
+                ? `url(${template.videoInfo.thumbnail})`
+                : undefined,
             backgroundSize: 'cover',
             backgroundPosition: 'center'
           }}
         >
+          {/* Show rendered video if available */}
+          {renderState.videoUrl && (
+            <video
+              src={renderState.videoUrl}
+              className="absolute inset-0 w-full h-full object-cover"
+              controls
+              playsInline
+            />
+          )}
+
           {/* Dark overlay for play button visibility */}
-          {template.videoInfo?.thumbnail && (
+          {!renderState.videoUrl && template.videoInfo?.thumbnail && (
             <div className="absolute inset-0 bg-black/30" />
           )}
 
-          {/* Centered Play Button */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-16 h-16 rounded-full bg-white/25 backdrop-blur-sm flex items-center justify-center">
-              <Play className="w-7 h-7 text-white ml-1" />
+          {/* Centered Play Button (only when no video) */}
+          {!renderState.videoUrl && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-16 h-16 rounded-full bg-white/25 backdrop-blur-sm flex items-center justify-center">
+                <Play className="w-7 h-7 text-white ml-1" />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
       {/* Video Info */}
       <div className="px-6 pb-4">
-        {/* Title */}
         <p className="text-white font-medium text-sm text-center line-clamp-2 mb-3">
           {title.length > 60 ? title.slice(0, 60) + '...' : title}
         </p>
 
-        {/* Stats Row */}
         <div className="flex items-center justify-center gap-5">
           <div className="flex items-center gap-1.5">
             <Clock className="w-4 h-4 text-[#8B5CF6]" />
-            <span className="text-sm text-white/70">{formatDuration(template.totalDuration)}</span>
+            <span className="text-sm text-white/70">{formatDuration(actualDuration)}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <MapPin className="w-4 h-4 text-[#14B8A6]" />
@@ -301,37 +415,119 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
           </div>
           <div className="flex items-center gap-1.5">
             <Film className="w-4 h-4 text-[#F472B6]" />
-            <span className="text-sm text-white/70">{totalScenes} scenes</span>
+            <span className="text-sm text-white/70">{filledScenes}/{totalScenes} scenes</span>
           </div>
         </div>
       </div>
 
       {/* Status Section */}
       <div className="flex flex-col items-center gap-2 px-4 py-4">
-        <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#14B8A6]">
-          <CircleCheck className="w-5 h-5 text-white" />
-          <span className="text-sm font-semibold text-white">Video Ready!</span>
-        </div>
-        <p className="text-sm text-[#888888] text-center">
-          Your template has been assembled with all<br />your media and captions
-        </p>
+        {renderState.status === 'idle' && filledScenes === totalScenes && (
+          <>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#14B8A6]">
+              <CircleCheck className="w-5 h-5 text-white" />
+              <span className="text-sm font-semibold text-white">Ready to Render!</span>
+            </div>
+            <p className="text-sm text-[#888888] text-center">
+              All scenes have videos. Tap below to<br />render your final video.
+            </p>
+          </>
+        )}
+
+        {renderState.status === 'idle' && filledScenes < totalScenes && (
+          <>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#F59E0B]">
+              <AlertCircle className="w-5 h-5 text-white" />
+              <span className="text-sm font-semibold text-white">Missing Videos</span>
+            </div>
+            <p className="text-sm text-[#888888] text-center">
+              Add videos to all scenes to render<br />your final video.
+            </p>
+          </>
+        )}
+
+        {(renderState.status === 'loading' || renderState.status === 'rendering') && (
+          <>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#8B5CF6]">
+              <Loader2 className="w-5 h-5 text-white animate-spin" />
+              <span className="text-sm font-semibold text-white">
+                {renderState.progress?.message || 'Processing...'}
+              </span>
+            </div>
+            {renderState.progress && (
+              <div className="w-48 h-2 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#8B5CF6] transition-all"
+                  style={{ width: `${renderState.progress.percent}%` }}
+                />
+              </div>
+            )}
+            <p className="text-sm text-[#888888] text-center">
+              {renderState.progress?.currentClip && renderState.progress?.totalClips
+                ? `Processing clip ${renderState.progress.currentClip}/${renderState.progress.totalClips}`
+                : 'This may take a minute...'}
+            </p>
+          </>
+        )}
+
+        {renderState.status === 'complete' && (
+          <>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#14B8A6]">
+              <CircleCheck className="w-5 h-5 text-white" />
+              <span className="text-sm font-semibold text-white">Video Ready!</span>
+            </div>
+            <p className="text-sm text-[#888888] text-center">
+              Your video has been rendered.<br />Download it below.
+            </p>
+          </>
+        )}
+
+        {renderState.status === 'error' && (
+          <>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#EF4444]">
+              <AlertCircle className="w-5 h-5 text-white" />
+              <span className="text-sm font-semibold text-white">Render Failed</span>
+            </div>
+            <p className="text-sm text-[#EF4444] text-center">
+              {renderState.error || 'Something went wrong'}
+            </p>
+          </>
+        )}
       </div>
 
-      {/* Spacer */}
       <div className="flex-1" />
 
       {/* Bottom Buttons */}
       <div className="flex flex-col gap-3 px-6 pb-8">
-        {/* Download to Phone Button */}
-        <button
-          onClick={handleDownloadToPhone}
-          className="w-full h-[52px] flex items-center justify-center gap-2 rounded-2xl bg-[#8B5CF6]"
-        >
-          <Smartphone className="w-5 h-5 text-white" />
-          <span className="text-base font-semibold text-white">Download to Phone</span>
-        </button>
+        {/* Main action button */}
+        {renderState.status === 'complete' ? (
+          <button
+            onClick={handleDownloadRenderedVideo}
+            className="w-full h-[52px] flex items-center justify-center gap-2 rounded-2xl bg-[#14B8A6]"
+          >
+            <Download className="w-5 h-5 text-white" />
+            <span className="text-base font-semibold text-white">Download Video</span>
+          </button>
+        ) : (
+          <button
+            onClick={handleRenderVideo}
+            disabled={renderState.status === 'loading' || renderState.status === 'rendering' || filledScenes === 0}
+            className="w-full h-[52px] flex items-center justify-center gap-2 rounded-2xl bg-[#8B5CF6] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {renderState.status === 'loading' || renderState.status === 'rendering' ? (
+              <Loader2 className="w-5 h-5 text-white animate-spin" />
+            ) : (
+              <Smartphone className="w-5 h-5 text-white" />
+            )}
+            <span className="text-base font-semibold text-white">
+              {renderState.status === 'loading' || renderState.status === 'rendering'
+                ? 'Rendering...'
+                : 'Render Video'}
+            </span>
+          </button>
+        )}
 
-        {/* Export Buttons - Side by Side */}
+        {/* Export Buttons */}
         <div className="flex gap-2">
           <button
             onClick={handleExportFinalCut}
@@ -349,13 +545,13 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
           </button>
         </div>
 
-        {/* Save to Library Button */}
+        {/* Save to My Edits Button */}
         <button
-          onClick={handleSaveToLibrary}
+          onClick={handleSaveToMyEdits}
           className="w-full h-[48px] flex items-center justify-center gap-2 rounded-2xl bg-[#1A1A2E]"
         >
           <Save className="w-5 h-5 text-white/70" />
-          <span className="text-base font-medium text-white/70">Save to Library</span>
+          <span className="text-base font-medium text-white/70">Save to My Edits</span>
         </button>
       </div>
     </div>

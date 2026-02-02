@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Play, Pause, Scissors, Type, Music, Eye, Film } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Scissors, Type, Music, Eye, Film, Loader2 } from 'lucide-react';
+import VideoTrimmer from '../../../components/VideoTrimmer';
+import { getVideoUrl } from '../../../lib/videoStorage';
 
 // Format duration to 1 decimal place
 const formatDuration = (duration: number): string => {
@@ -20,6 +22,14 @@ interface TextStyle {
   emojiPosition?: 'before' | 'after' | 'both';
   position: 'top' | 'center' | 'bottom';
   alignment: 'left' | 'center' | 'right';
+}
+
+interface TrimData {
+  inTime: number;
+  outTime: number;
+  cropX: number;
+  cropY: number;
+  cropScale: number;
 }
 
 interface TextOverlay {
@@ -40,10 +50,13 @@ interface TimelineClip {
   startTime: number;
   duration: number;
   videoUrl?: string;
+  videoId?: string;
   thumbnail?: string;
   textOverlay?: string;
   textStyle?: TextStyle;
   muted: boolean;
+  trimData?: TrimData;
+  userVideoDuration?: number;
 }
 
 interface Template {
@@ -68,9 +81,12 @@ interface Template {
       textOverlay: string | null;
       textStyle?: TextStyle;
       thumbnail?: string;
+      userVideoId?: string;
       userVideo?: File | null;
       userThumbnail?: string;
+      userVideoDuration?: number;
       filled: boolean;
+      trimData?: TrimData;
     }>;
     totalDuration: number;
   }>;
@@ -95,10 +111,19 @@ export default function TimelineEditor() {
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [totalDuration, setTotalDuration] = useState(15); // Default 15s like mockup
+  const [totalDuration, setTotalDuration] = useState(15);
 
   // Selection state
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
+
+  // Trim modal state
+  const [trimModal, setTrimModal] = useState<{
+    clipId: string;
+    videoUrl: string;
+    videoDuration: number;
+    targetDuration: number;
+    trimData?: TrimData;
+  } | null>(null);
 
   useEffect(() => {
     loadTemplate();
@@ -136,14 +161,19 @@ export default function TimelineEditor() {
           locationName: location.locationName,
           color,
           startTime: currentStartTime,
-          duration: scene.duration,
+          duration: scene.trimData
+            ? scene.trimData.outTime - scene.trimData.inTime
+            : scene.duration,
+          videoId: scene.userVideoId,
           thumbnail: scene.filled ? scene.userThumbnail : undefined,
           textOverlay: scene.textOverlay || location.locationName,
           textStyle: scene.textStyle,
           muted: false,
+          trimData: scene.trimData,
+          userVideoDuration: scene.userVideoDuration,
         };
         timelineClips.push(clip);
-        currentStartTime += scene.duration;
+        currentStartTime += clip.duration;
       });
 
       // Create ONE text overlay per LOCATION (not per scene)
@@ -163,7 +193,7 @@ export default function TimelineEditor() {
             alignment: 'left',
           },
           startTime: locationStartTime,
-          endTime: currentStartTime, // End when location ends
+          endTime: currentStartTime,
           trackIndex: 0,
         });
       }
@@ -195,6 +225,65 @@ export default function TimelineEditor() {
     return () => clearInterval(interval);
   }, [isPlaying, totalDuration]);
 
+  // Open trim modal for selected clip
+  const openTrimModal = async (clipId: string) => {
+    const clip = clips.find(c => c.id === clipId);
+    if (!clip || !clip.videoId) return;
+
+    const videoUrl = await getVideoUrl(clip.videoId);
+    if (!videoUrl) return;
+
+    setTrimModal({
+      clipId,
+      videoUrl,
+      videoDuration: clip.userVideoDuration || clip.duration,
+      targetDuration: clip.duration,
+      trimData: clip.trimData,
+    });
+  };
+
+  // Save trim data from modal
+  const saveTrimData = (trimData: TrimData) => {
+    if (!trimModal || !template) return;
+
+    const clip = clips.find(c => c.id === trimModal.clipId);
+    if (!clip) return;
+
+    // Update clips state
+    const newDuration = trimData.outTime - trimData.inTime;
+    setClips(clips.map(c =>
+      c.id === trimModal.clipId
+        ? { ...c, trimData, duration: newDuration }
+        : c
+    ));
+
+    // Update template in localStorage
+    const updatedTemplate = {
+      ...template,
+      locations: template.locations.map(loc =>
+        loc.locationId === clip.locationId
+          ? {
+              ...loc,
+              scenes: loc.scenes.map(scene =>
+                scene.id === clip.sceneId
+                  ? { ...scene, trimData }
+                  : scene
+              )
+            }
+          : loc
+      )
+    };
+    setTemplate(updatedTemplate);
+    localStorage.setItem(`template_${params.id}`, JSON.stringify(updatedTemplate));
+
+    // Recalculate timeline
+    initializeTimeline(updatedTemplate);
+
+    // Clean up
+    URL.revokeObjectURL(trimModal.videoUrl);
+    setTrimModal(null);
+  };
+
   const handlePreview = () => {
     if (template) {
       const updatedTemplate = {
@@ -203,66 +292,12 @@ export default function TimelineEditor() {
           clips,
           textOverlays,
         },
-        isEdit: true,
-        isDraft: false,
+        isDraft: true,
         editedAt: new Date().toISOString(),
       };
       localStorage.setItem(`template_${params.id}`, JSON.stringify(updatedTemplate));
     }
     router.push(`/preview/reel/${params.id}`);
-  };
-
-  // Export to CapCut template format
-  const handleExportCapCut = () => {
-    if (!template) return;
-
-    // Build CapCut-compatible template structure
-    const capCutTemplate = {
-      name: template.videoInfo?.title || 'Untitled Template',
-      duration: Number(totalDuration.toFixed(1)),
-      tracks: {
-        video: clips.map((clip, idx) => ({
-          id: idx + 1,
-          type: 'video_placeholder',
-          start: Number(clip.startTime.toFixed(1)),
-          duration: Number(clip.duration.toFixed(1)),
-          locationId: clip.locationId,
-          locationName: clip.locationName,
-        })),
-        text: textOverlays.map((overlay, idx) => ({
-          id: idx + 1,
-          type: 'text',
-          content: overlay.text,
-          start: Number(overlay.startTime.toFixed(1)),
-          end: Number(overlay.endTime.toFixed(1)),
-          duration: Number((overlay.endTime - overlay.startTime).toFixed(1)),
-          style: {
-            fontFamily: overlay.style.fontFamily,
-            fontSize: overlay.style.fontSize,
-            fontWeight: overlay.style.fontWeight,
-            color: overlay.style.color,
-            position: overlay.style.position,
-            emoji: overlay.style.hasEmoji ? overlay.style.emoji : null,
-          },
-        })),
-      },
-      metadata: {
-        exportedAt: new Date().toISOString(),
-        source: 'TemplateMaker',
-        originalAuthor: template.videoInfo?.author || 'Unknown',
-      },
-    };
-
-    // Download as JSON file
-    const blob = new Blob([JSON.stringify(capCutTemplate, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `capcut-template-${params.id}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   const formatTime = (seconds: number) => {
@@ -292,11 +327,12 @@ export default function TimelineEditor() {
   }
 
   const timeMarkers = generateTimeMarkers();
-  const timelineWidth = Math.max(totalDuration * 35, 300); // pixels per second
+  const timelineWidth = Math.max(totalDuration * 35, 300);
+  const selectedClipData = selectedClip ? clips.find(c => c.id === selectedClip) : null;
 
   return (
     <div className="h-screen bg-black flex flex-col overflow-hidden">
-      {/* Header - matching Fill Your Template */}
+      {/* Header */}
       <div className="flex items-center justify-between h-14 px-4 pt-4 pb-2 flex-shrink-0">
         <button
           onClick={() => router.back()}
@@ -308,9 +344,17 @@ export default function TimelineEditor() {
         <div className="w-9" />
       </div>
 
-      {/* Video Preview - Constrained height */}
+      {/* Video Preview */}
       <div className="flex-1 flex justify-center items-center px-8 py-2 min-h-0">
         <div className="relative h-full max-h-[45vh] aspect-[9/16] bg-[#1A1A2E] rounded-2xl overflow-hidden">
+          {/* Show selected clip thumbnail */}
+          {selectedClipData?.thumbnail && (
+            <div
+              className="absolute inset-0 bg-cover bg-center"
+              style={{ backgroundImage: `url(${selectedClipData.thumbnail})` }}
+            />
+          )}
+
           {/* Play Button */}
           <button
             onClick={togglePlayback}
@@ -325,14 +369,14 @@ export default function TimelineEditor() {
             </div>
           </button>
 
-          {/* Time Display - Bottom Left */}
+          {/* Time Display */}
           <div className="absolute bottom-3 left-3 px-2 py-0.5 bg-black/60 rounded-md">
             <span className="text-white text-xs font-medium">{formatTime(currentTime)}</span>
           </div>
         </div>
       </div>
 
-      {/* Toolbar - Trim, Text, Audio */}
+      {/* Toolbar */}
       <div className="flex items-center justify-center gap-10 py-3 border-t border-white/10 flex-shrink-0">
         <button
           onClick={() => setActiveTab('trim')}
@@ -357,9 +401,50 @@ export default function TimelineEditor() {
         </button>
       </div>
 
+      {/* Tab Content Area */}
+      {activeTab === 'trim' && selectedClipData && (
+        <div className="px-4 py-2 border-t border-white/10 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-white text-sm font-medium">{selectedClipData.locationName}</p>
+              <p className="text-white/50 text-xs">
+                {formatDuration(selectedClipData.duration)}s
+                {selectedClipData.trimData && ' (trimmed)'}
+              </p>
+            </div>
+            {selectedClipData.videoId && (
+              <button
+                onClick={() => openTrimModal(selectedClipData.id)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#8B5CF6] text-white text-sm font-medium"
+              >
+                <Scissors className="w-4 h-4" />
+                Trim Clip
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'trim' && !selectedClipData && (
+        <div className="px-4 py-3 border-t border-white/10 flex-shrink-0">
+          <p className="text-white/40 text-sm text-center">Select a clip to trim</p>
+        </div>
+      )}
+
+      {activeTab === 'text' && (
+        <div className="px-4 py-3 border-t border-white/10 flex-shrink-0">
+          <p className="text-white/40 text-sm text-center">Text editing coming soon</p>
+        </div>
+      )}
+
+      {activeTab === 'audio' && (
+        <div className="px-4 py-3 border-t border-white/10 flex-shrink-0">
+          <p className="text-white/40 text-sm text-center">Audio track coming soon</p>
+        </div>
+      )}
+
       {/* Timeline Section */}
       <div className="bg-[#0D0D1A] px-4 py-3 flex-shrink-0">
-        {/* Scrollable Timeline */}
         <div
           ref={timelineScrollRef}
           className="overflow-x-auto"
@@ -379,31 +464,31 @@ export default function TimelineEditor() {
               ))}
             </div>
 
-            {/* Scene Track - Colored Cards with Duration */}
+            {/* Scene Track */}
             <div className="flex items-center gap-2 mb-2">
               <Film className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
               <div className="flex-1 flex gap-1">
-              {clips.map((clip) => (
-                <button
-                  key={clip.id}
-                  onClick={() => {
-                    setSelectedClip(clip.id);
-                    setCurrentTime(clip.startTime);
-                  }}
-                  className={`h-12 rounded-xl transition-all flex items-center justify-center ${
-                    selectedClip === clip.id ? 'ring-2 ring-white' : ''
-                  }`}
-                  style={{
-                    backgroundColor: clip.color,
-                    flex: clip.duration,
-                    minWidth: 45,
-                  }}
-                >
-                  <span className="text-[10px] font-semibold text-white/90">
-                    {formatDuration(clip.duration)}s
-                  </span>
-                </button>
-              ))}
+                {clips.map((clip) => (
+                  <button
+                    key={clip.id}
+                    onClick={() => {
+                      setSelectedClip(clip.id);
+                      setCurrentTime(clip.startTime);
+                    }}
+                    className={`h-12 rounded-xl transition-all flex items-center justify-center ${
+                      selectedClip === clip.id ? 'ring-2 ring-white' : ''
+                    }`}
+                    style={{
+                      backgroundColor: clip.color,
+                      flex: clip.duration,
+                      minWidth: 45,
+                    }}
+                  >
+                    <span className="text-[10px] font-semibold text-white/90">
+                      {formatDuration(clip.duration)}s
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -413,19 +498,15 @@ export default function TimelineEditor() {
               <div className="flex-1 h-6 bg-[#1A1A2E] rounded-lg" />
             </div>
 
-            {/* Text Track - Aligned with scene track */}
+            {/* Text Track */}
             <div className="flex items-center gap-2">
               <Type className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
               <div className="flex-1 flex gap-1">
                 {clips.map((clip, idx) => {
-                  // Find if this clip starts a new location (show text bar)
                   const isFirstSceneOfLocation = idx === 0 || clips[idx - 1].locationId !== clip.locationId;
-                  // Find all clips for this location to calculate total duration
                   const locationClips = clips.filter(c => c.locationId === clip.locationId);
-                  const isLastOfLocation = idx === clips.length - 1 || clips[idx + 1].locationId !== clip.locationId;
 
                   if (isFirstSceneOfLocation) {
-                    // Calculate total flex for this location
                     const locationDuration = locationClips.reduce((sum, c) => sum + c.duration, 0);
                     return (
                       <div
@@ -456,6 +537,21 @@ export default function TimelineEditor() {
           Preview
         </button>
       </div>
+
+      {/* Trim Modal */}
+      {trimModal && (
+        <VideoTrimmer
+          videoUrl={trimModal.videoUrl}
+          videoDuration={trimModal.videoDuration}
+          targetDuration={trimModal.targetDuration}
+          initialTrimData={trimModal.trimData}
+          onSave={saveTrimData}
+          onCancel={() => {
+            URL.revokeObjectURL(trimModal.videoUrl);
+            setTrimModal(null);
+          }}
+        />
+      )}
     </div>
   );
 }

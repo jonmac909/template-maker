@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Sparkles, Check, Clock, ChevronDown, ChevronUp, Pencil, X, Type, Save, Plus, Loader2, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Sparkles, Check, Clock, ChevronDown, ChevronUp, Pencil, X, Type, Save, Plus, Loader2, Image as ImageIcon, Scissors, Crop } from 'lucide-react';
 import { getFontNames, addFontsToLibrary, initializeFontLibrary, trackFontUsage, addCustomFont, loadGoogleFonts } from '../../../lib/fontLibrary';
+import { saveVideo, generateVideoId, generateThumbnail as generateVideoThumbnail, saveThumbnail, getVideoUrl, getVideoDuration } from '../../../lib/videoStorage';
+import VideoTrimmer from '../../../components/VideoTrimmer';
+import VideoCropper from '../../../components/VideoCropper';
 
 interface TextStyle {
   fontFamily: string;
@@ -19,6 +22,14 @@ interface TextStyle {
   alignment: 'left' | 'center' | 'right';
 }
 
+interface TrimData {
+  inTime: number;
+  outTime: number;
+  cropX: number;
+  cropY: number;
+  cropScale: number;
+}
+
 interface SceneInfo {
   id: number;
   startTime: number;
@@ -28,9 +39,12 @@ interface SceneInfo {
   textStyle?: TextStyle;
   description: string;
   thumbnail?: string;
+  userVideoId?: string;
   userVideo?: File | null;
   userThumbnail?: string;
+  userVideoDuration?: number;
   filled: boolean;
+  trimData?: TrimData;
 }
 
 interface LocationGroup {
@@ -162,6 +176,8 @@ export default function ReelEditor() {
   const [locationTextStyle, setLocationTextStyle] = useState<TextStyle>(DEFAULT_TEXT_STYLE);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [reanalyzeStatus, setReanalyzeStatus] = useState('');
+  const [trimScene, setTrimScene] = useState<{locationId: number, sceneId: number, videoUrl: string, videoDuration: number, trimData?: TrimData} | null>(null);
+  const [cropScene, setCropScene] = useState<{locationId: number, sceneId: number, videoUrl: string, cropData?: {cropX: number, cropY: number, cropScale: number}} | null>(null);
 
   useEffect(() => {
     // Initialize font library
@@ -502,20 +518,55 @@ export default function ReelEditor() {
   };
 
   const handleFileUpload = async (locationId: number, sceneId: number, file: File) => {
-    const thumbnail = await generateThumbnail(file);
+    try {
+      // Generate thumbnail
+      const thumbnail = await generateVideoThumbnail(file);
 
-    setLocations(locations.map(loc =>
-      loc.locationId === locationId
-        ? {
-            ...loc,
-            scenes: loc.scenes.map(scene =>
-              scene.id === sceneId
-                ? { ...scene, userVideo: file, userThumbnail: thumbnail, filled: true }
-                : scene
-            )
-          }
-        : loc
-    ));
+      // Get video duration
+      const videoDuration = await getVideoDuration(file);
+
+      // Save video to IndexedDB
+      const videoId = await saveVideo(params.id as string, locationId, sceneId, file);
+
+      // Save thumbnail to IndexedDB
+      await saveThumbnail(videoId, thumbnail);
+
+      // Find the target scene duration
+      const targetScene = locations.find(loc => loc.locationId === locationId)?.scenes.find(s => s.id === sceneId);
+      const targetDuration = targetScene?.duration ?? videoDuration;
+
+      // Calculate default trim data
+      const defaultTrimData: TrimData = {
+        inTime: 0,
+        outTime: Math.min(targetDuration, videoDuration),
+        cropX: 0.5,
+        cropY: 0.5,
+        cropScale: 1,
+      };
+
+      setLocations(locations.map(loc =>
+        loc.locationId === locationId
+          ? {
+              ...loc,
+              scenes: loc.scenes.map(scene =>
+                scene.id === sceneId
+                  ? {
+                      ...scene,
+                      userVideoId: videoId,
+                      userVideo: file,
+                      userThumbnail: thumbnail,
+                      userVideoDuration: videoDuration,
+                      filled: true,
+                      trimData: defaultTrimData,
+                    }
+                  : scene
+              )
+            }
+          : loc
+      ));
+    } catch (error) {
+      console.error('Failed to upload video:', error);
+    }
   };
 
   const generateThumbnail = (file: File): Promise<string> => {
@@ -604,6 +655,105 @@ export default function ReelEditor() {
       setCustomFontName('');
       setShowAddFont(false);
     }
+  };
+
+  // Open trim modal for a scene
+  const openTrimModal = async (locationId: number, sceneId: number) => {
+    const scene = locations.find(loc => loc.locationId === locationId)?.scenes.find(s => s.id === sceneId);
+    if (!scene?.userVideoId && !scene?.userVideo) return;
+
+    let videoUrl: string | null = null;
+    if (scene.userVideo) {
+      videoUrl = URL.createObjectURL(scene.userVideo);
+    } else if (scene.userVideoId) {
+      videoUrl = await getVideoUrl(scene.userVideoId);
+    }
+
+    if (videoUrl) {
+      setTrimScene({
+        locationId,
+        sceneId,
+        videoUrl,
+        videoDuration: scene.userVideoDuration || scene.duration,
+        trimData: scene.trimData,
+      });
+    }
+  };
+
+  // Save trim data
+  const saveTrimData = (trimData: TrimData) => {
+    if (!trimScene) return;
+
+    setLocations(locations.map(loc =>
+      loc.locationId === trimScene.locationId
+        ? {
+            ...loc,
+            scenes: loc.scenes.map(scene =>
+              scene.id === trimScene.sceneId
+                ? { ...scene, trimData }
+                : scene
+            )
+          }
+        : loc
+    ));
+
+    // Clean up URL
+    URL.revokeObjectURL(trimScene.videoUrl);
+    setTrimScene(null);
+  };
+
+  // Open crop modal for a scene
+  const openCropModal = async (locationId: number, sceneId: number) => {
+    const scene = locations.find(loc => loc.locationId === locationId)?.scenes.find(s => s.id === sceneId);
+    if (!scene?.userVideoId && !scene?.userVideo) return;
+
+    let videoUrl: string | null = null;
+    if (scene.userVideo) {
+      videoUrl = URL.createObjectURL(scene.userVideo);
+    } else if (scene.userVideoId) {
+      videoUrl = await getVideoUrl(scene.userVideoId);
+    }
+
+    if (videoUrl) {
+      setCropScene({
+        locationId,
+        sceneId,
+        videoUrl,
+        cropData: scene.trimData ? {
+          cropX: scene.trimData.cropX,
+          cropY: scene.trimData.cropY,
+          cropScale: scene.trimData.cropScale,
+        } : undefined,
+      });
+    }
+  };
+
+  // Save crop data
+  const saveCropData = (cropData: {cropX: number, cropY: number, cropScale: number}) => {
+    if (!cropScene) return;
+
+    setLocations(locations.map(loc =>
+      loc.locationId === cropScene.locationId
+        ? {
+            ...loc,
+            scenes: loc.scenes.map(scene =>
+              scene.id === cropScene.sceneId
+                ? {
+                    ...scene,
+                    trimData: {
+                      ...(scene.trimData || { inTime: 0, outTime: scene.duration }),
+                      ...cropData,
+                    }
+                  }
+                : scene
+            )
+          }
+        : loc
+    ));
+
+    // Clean up URL
+    URL.revokeObjectURL(cropScene.videoUrl);
+    setCropScene(null);
   };
 
   const handleCreateVideo = () => {
@@ -1202,6 +1352,36 @@ export default function ReelEditor() {
                               )}
                               <Pencil className="w-3 h-3 text-white/40 flex-shrink-0" />
                             </button>
+
+                            {/* Trim & Crop buttons (only show when video is uploaded) */}
+                            {scene.filled && (
+                              <div className="flex items-center gap-2 mt-2">
+                                <button
+                                  onClick={() => openTrimModal(location.locationId, scene.id)}
+                                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[#1A1A2E] hover:bg-[#2D2640] transition-colors"
+                                >
+                                  <Scissors className="w-3.5 h-3.5 text-white/60" />
+                                  <span className="text-[10px] text-white/60">Trim</span>
+                                  {scene.trimData && (
+                                    <span className="text-[9px] text-[#14B8A6]">
+                                      {Number((scene.trimData.outTime - scene.trimData.inTime).toFixed(1))}s
+                                    </span>
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => openCropModal(location.locationId, scene.id)}
+                                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[#1A1A2E] hover:bg-[#2D2640] transition-colors"
+                                >
+                                  <Crop className="w-3.5 h-3.5 text-white/60" />
+                                  <span className="text-[10px] text-white/60">Crop</span>
+                                  {scene.trimData && scene.trimData.cropScale > 1 && (
+                                    <span className="text-[9px] text-[#14B8A6]">
+                                      {Math.round(scene.trimData.cropScale * 100)}%
+                                    </span>
+                                  )}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1229,13 +1409,37 @@ export default function ReelEditor() {
           </span>
         </button>
 
-        <button
-          onClick={handleCreateVideo}
-          className="w-full text-center text-sm text-white/40 hover:text-white/60 transition-colors"
-        >
-          Skip to Preview
-        </button>
       </div>
+
+      {/* Trim Modal */}
+      {trimScene && (
+        <VideoTrimmer
+          videoUrl={trimScene.videoUrl}
+          videoDuration={trimScene.videoDuration}
+          targetDuration={
+            locations.find(loc => loc.locationId === trimScene.locationId)?.scenes.find(s => s.id === trimScene.sceneId)?.duration || trimScene.videoDuration
+          }
+          initialTrimData={trimScene.trimData}
+          onSave={saveTrimData}
+          onCancel={() => {
+            URL.revokeObjectURL(trimScene.videoUrl);
+            setTrimScene(null);
+          }}
+        />
+      )}
+
+      {/* Crop Modal */}
+      {cropScene && (
+        <VideoCropper
+          videoUrl={cropScene.videoUrl}
+          initialCropData={cropScene.cropData}
+          onSave={saveCropData}
+          onCancel={() => {
+            URL.revokeObjectURL(cropScene.videoUrl);
+            setCropScene(null);
+          }}
+        />
+      )}
     </div>
   );
 }
