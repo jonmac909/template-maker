@@ -2,7 +2,12 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Play, Pause, Scissors, Type, Music, Eye } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Scissors, Type, Music, Eye, Download } from 'lucide-react';
+
+// Format duration to 1 decimal place
+const formatDuration = (duration: number): string => {
+  return Number(duration.toFixed(1)).toString();
+};
 
 interface TextStyle {
   fontFamily: string;
@@ -207,6 +212,59 @@ export default function TimelineEditor() {
     router.push(`/preview/reel/${params.id}`);
   };
 
+  // Export to CapCut template format
+  const handleExportCapCut = () => {
+    if (!template) return;
+
+    // Build CapCut-compatible template structure
+    const capCutTemplate = {
+      name: template.videoInfo?.title || 'Untitled Template',
+      duration: Number(totalDuration.toFixed(1)),
+      tracks: {
+        video: clips.map((clip, idx) => ({
+          id: idx + 1,
+          type: 'video_placeholder',
+          start: Number(clip.startTime.toFixed(1)),
+          duration: Number(clip.duration.toFixed(1)),
+          locationId: clip.locationId,
+          locationName: clip.locationName,
+        })),
+        text: textOverlays.map((overlay, idx) => ({
+          id: idx + 1,
+          type: 'text',
+          content: overlay.text,
+          start: Number(overlay.startTime.toFixed(1)),
+          end: Number(overlay.endTime.toFixed(1)),
+          duration: Number((overlay.endTime - overlay.startTime).toFixed(1)),
+          style: {
+            fontFamily: overlay.style.fontFamily,
+            fontSize: overlay.style.fontSize,
+            fontWeight: overlay.style.fontWeight,
+            color: overlay.style.color,
+            position: overlay.style.position,
+            emoji: overlay.style.hasEmoji ? overlay.style.emoji : null,
+          },
+        })),
+      },
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        source: 'TemplateMaker',
+        originalAuthor: template.videoInfo?.author || 'Unknown',
+      },
+    };
+
+    // Download as JSON file
+    const blob = new Blob([JSON.stringify(capCutTemplate, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `capcut-template-${params.id}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -340,7 +398,7 @@ export default function TimelineEditor() {
                   }}
                 >
                   <span className="text-[10px] font-semibold text-white/90">
-                    {clip.duration}s
+                    {formatDuration(clip.duration)}s
                   </span>
                 </button>
               ))}
@@ -352,34 +410,54 @@ export default function TimelineEditor() {
               <div className="flex-1 h-6 bg-[#1A1A2E] rounded-lg" />
             </div>
 
-            {/* Text Track - One bar per location */}
+            {/* Text Track - Aligned with scene track */}
             <div className="flex items-center gap-2">
               <Type className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
               <div className="flex-1 flex gap-1">
-                {textOverlays.map((overlay) => (
-                  <div
-                    key={overlay.id}
-                    className="h-6 bg-[#8B5CF6] rounded-lg"
-                    style={{
-                      flex: overlay.endTime - overlay.startTime,
-                      minWidth: 35,
-                    }}
-                  />
-                ))}
+                {clips.map((clip, idx) => {
+                  // Find if this clip starts a new location (show text bar)
+                  const isFirstSceneOfLocation = idx === 0 || clips[idx - 1].locationId !== clip.locationId;
+                  // Find all clips for this location to calculate total duration
+                  const locationClips = clips.filter(c => c.locationId === clip.locationId);
+                  const isLastOfLocation = idx === clips.length - 1 || clips[idx + 1].locationId !== clip.locationId;
+
+                  if (isFirstSceneOfLocation) {
+                    // Calculate total flex for this location
+                    const locationDuration = locationClips.reduce((sum, c) => sum + c.duration, 0);
+                    return (
+                      <div
+                        key={`text-${clip.locationId}`}
+                        className="h-6 bg-[#8B5CF6] rounded-lg"
+                        style={{
+                          flex: locationDuration,
+                          minWidth: 35,
+                        }}
+                      />
+                    );
+                  }
+                  return null;
+                })}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Preview Button */}
-      <div className="px-5 py-4 flex-shrink-0">
+      {/* Bottom Buttons */}
+      <div className="px-5 py-4 flex-shrink-0 space-y-2">
         <button
           onClick={handlePreview}
           className="w-full h-12 flex items-center justify-center gap-2 rounded-full bg-[#8B5CF6] text-white font-semibold text-sm"
         >
           <Eye className="w-4 h-4" />
           Preview
+        </button>
+        <button
+          onClick={handleExportCapCut}
+          className="w-full h-10 flex items-center justify-center gap-2 rounded-full bg-[#2D2640] text-white/80 font-medium text-sm"
+        >
+          <Download className="w-4 h-4" />
+          Export to CapCut
         </button>
       </div>
     </div>
