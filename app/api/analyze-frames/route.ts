@@ -21,26 +21,52 @@ interface AnalysisRequest {
 }
 
 // Helper to fetch thumbnail from URL (server-side, no CORS issues)
+// Uses image proxy services as fallback since TikTok URLs expire
 async function fetchThumbnailFromUrl(url: string): Promise<string | null> {
-  try {
-    console.log('Fetching thumbnail from URL:', url.substring(0, 80));
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      },
-    });
-    if (!response.ok) {
-      console.error('Thumbnail fetch failed:', response.status);
-      return null;
+  const methods = [
+    // Method 1: Direct fetch
+    async () => {
+      console.log('Method 1: Direct fetch from:', url.substring(0, 60));
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        },
+      });
+      if (!response.ok) throw new Error(`Direct fetch failed: ${response.status}`);
+      return response;
+    },
+    // Method 2: weserv.nl proxy
+    async () => {
+      const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg`;
+      console.log('Method 2: wsrv.nl proxy');
+      const response = await fetch(proxyUrl);
+      if (!response.ok) throw new Error(`wsrv.nl failed: ${response.status}`);
+      return response;
+    },
+    // Method 3: images.weserv.nl proxy
+    async () => {
+      const proxyUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}&output=jpg`;
+      console.log('Method 3: images.weserv.nl proxy');
+      const response = await fetch(proxyUrl);
+      if (!response.ok) throw new Error(`images.weserv.nl failed: ${response.status}`);
+      return response;
+    },
+  ];
+
+  for (const method of methods) {
+    try {
+      const response = await method();
+      const buffer = await response.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      console.log('Thumbnail fetched successfully, size:', base64.length);
+      return base64;
+    } catch (error) {
+      console.log('Fetch method failed:', error instanceof Error ? error.message : error);
     }
-    const buffer = await response.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString('base64');
-    console.log('Thumbnail fetched successfully, size:', base64.length);
-    return base64;
-  } catch (error) {
-    console.error('Failed to fetch thumbnail:', error);
-    return null;
   }
+
+  console.error('All thumbnail fetch methods failed');
+  return null;
 }
 
 export async function POST(request: NextRequest) {

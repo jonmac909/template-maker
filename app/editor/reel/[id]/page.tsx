@@ -334,6 +334,44 @@ export default function ReelEditor() {
     setEditingTitle(false);
   };
 
+  // Convert image URL to base64 by drawing to canvas (works even if URL expired for server)
+  const imageUrlToBase64 = async (url: string): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          try {
+            const base64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+            resolve(base64);
+          } catch (e) {
+            console.error('Canvas toDataURL failed (CORS?):', e);
+            resolve(null);
+          }
+        } else {
+          resolve(null);
+        }
+      };
+
+      img.onerror = () => {
+        console.error('Image failed to load');
+        resolve(null);
+      };
+
+      // Try loading - browser may have it cached
+      img.src = url;
+
+      // Timeout after 5 seconds
+      setTimeout(() => resolve(null), 5000);
+    });
+  };
+
   // Re-analyze thumbnail to extract intro text and fonts
   const handleReanalyze = async () => {
     if (!template?.videoInfo?.thumbnail) {
@@ -343,16 +381,28 @@ export default function ReelEditor() {
     }
 
     setReanalyzing(true);
-    setReanalyzeStatus('Fetching thumbnail...');
+    setReanalyzeStatus('Converting thumbnail...');
 
     try {
-      console.log('Sending thumbnail URL to analyze:', template.videoInfo.thumbnail);
+      // Convert the displayed thumbnail to base64 client-side
+      // This works because the browser has the image cached/displayed
+      const thumbnailBase64 = await imageUrlToBase64(template.videoInfo.thumbnail);
+
+      if (!thumbnailBase64) {
+        setReanalyzeStatus('Could not capture thumbnail - try refreshing');
+        setTimeout(() => setReanalyzeStatus(''), 4000);
+        setReanalyzing(false);
+        return;
+      }
+
+      console.log('Thumbnail converted to base64, length:', thumbnailBase64.length);
+      setReanalyzeStatus('Sending to AI for analysis...');
 
       const response = await fetch('/api/analyze-frames', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          thumbnailUrl: template.videoInfo.thumbnail,
+          thumbnailBase64, // Send base64 directly instead of URL
           frames: [],
           videoInfo: {
             title: '', // Don't send title - we want Claude to READ the image
@@ -372,13 +422,6 @@ export default function ReelEditor() {
 
       if (result.error) {
         throw new Error(result.error);
-      }
-
-      // Check if we actually got thumbnail analyzed
-      if (!result.hadThumbnail) {
-        setReanalyzeStatus('Failed to fetch thumbnail from TikTok');
-        setTimeout(() => setReanalyzeStatus(''), 4000);
-        return;
       }
 
       setReanalyzeStatus('Reading text from image...');
