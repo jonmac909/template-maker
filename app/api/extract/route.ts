@@ -625,50 +625,39 @@ async function analyzeVideoWithClaude(
     const countMatch = videoInfo.title.match(/(\d+)\s*(must|best|top|places|things|spots|cafe|restaurant|unique)/i);
     const expectedCount = countMatch ? parseInt(countMatch[1]) : 5;
 
-    const prompt = `You are analyzing TikTok video cover/thumbnail images to extract the EXACT visible text.
+    const prompt = `OCR this TikTok thumbnail image. Read ALL text visible character by character.
 
-VIDEO INFO:
-- Title from TikTok: "${videoInfo.title}" (this may differ from what's shown in the video!)
-- Author: @${videoInfo.author}
-- Duration: ${videoInfo.duration} seconds
+Duration: ${videoInfo.duration} seconds
+Expected locations: ${expectedCount}
 
-CRITICAL INSTRUCTIONS:
-1. LOOK AT THE IMAGES - find ANY text overlays visible
-2. The INTRO/HOOK TEXT is usually a catchy phrase like:
-   - "10 Dreamiest Places in Northern Thailand"
-   - "Best Cafes in Tokyo You NEED to Visit"
-   - "Hidden Gems in Bali"
-3. READ EXACTLY what you see - do NOT use the video title from TikTok metadata!
-4. The video title "${videoInfo.title}" is just metadata - the ACTUAL intro text in the video may be DIFFERENT
-5. Look for numbered lists (1. Blue Temple, 2. Cafe Name)
-6. Note font styles: script/cursive, bold display, clean sans-serif
+LOOK AT THE IMAGE AND READ:
+1. The big intro/hook text (like "10 Dreamiest Places in Northern Thailand")
+2. Any numbered location names (1. Blue Temple, 2. Cafe Name)
+3. Font styles you see
 
-IMPORTANT: Extract what's VISIBLE in the images, not the metadata title!
-
-Respond with ONLY valid JSON:
+Return ONLY this JSON (fill in what you READ from the image):
 
 {
   "type": "reel",
   "totalDuration": ${videoInfo.duration},
   "extractedText": {
-    "hookText": "THE EXACT TEXT YOU READ FROM THE IMAGE - NOT the metadata title '${videoInfo.title}'",
-    "visibleLocations": ["Blue Temple", "Cafe Name", "etc"]
+    "hookText": "COPY THE EXACT BIG TEXT YOU SEE IN THE IMAGE",
+    "visibleLocations": ["location names you can read"]
   },
   "extractedFonts": {
-    "titleFont": { "style": "script|sans-serif|display", "weight": "bold", "description": "describe font" },
-    "bodyFont": { "style": "sans-serif", "weight": "normal", "description": "describe font" }
+    "titleFont": { "style": "script|sans-serif|display", "weight": "bold", "description": "what the title font looks like" }
   },
   "visualStyle": "elegant|bold|minimal|playful",
   "locations": [
     {
       "locationId": 0,
       "locationName": "Intro",
-      "scenes": [{ "id": 1, "startTime": 0, "endTime": 2, "duration": 2, "textOverlay": "EXACT TEXT FROM IMAGE HERE", "description": "Hook" }],
+      "scenes": [{ "id": 1, "startTime": 0, "endTime": 2, "duration": 2, "textOverlay": "THE BIG TEXT FROM THE IMAGE", "description": "Hook" }],
       "totalDuration": 2
     },
     {
       "locationId": 1,
-      "locationName": "Location 1",
+      "locationName": "First location name",
       "scenes": [{ "id": 11, "startTime": 2, "endTime": 5, "duration": 3, "textOverlay": "1. Name", "description": "Shot" }],
       "totalDuration": 3
     }
@@ -676,9 +665,7 @@ Respond with ONLY valid JSON:
   "music": { "name": "Sound", "hasMusic": true }
 }
 
-Create ${expectedCount} locations plus Intro and Outro.
-READ THE ACTUAL TEXT IN THE IMAGES - the hook text is likely different from "${videoInfo.title}"!
-Respond with ONLY JSON:`;
+Create ${expectedCount} locations plus Intro and Outro.`;
 
     let analysisResult: VideoAnalysis;
 
@@ -813,15 +800,10 @@ Respond with ONLY JSON:`;
         text: prompt,
       });
     } else {
-      // Add OCR-specific instruction before the main prompt
+      // Add OCR instruction
       messageContent.push({
         type: 'text',
-        text: `PERFORM OCR: Read ALL text visible in these images character by character.
-The text overlay in TikTok videos is usually large, stylized text.
-DO NOT assume the text matches the video metadata.
-OCR the actual pixels and tell me EXACTLY what letters/words you see.
-
-` + prompt,
+        text: prompt,
       });
     }
 
