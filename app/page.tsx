@@ -25,7 +25,14 @@ export default function Home() {
       if (!response.ok) throw new Error('Failed to extract');
 
       const data = await response.json();
-      router.push(`/template/${data.templateId}`);
+      // Store template in localStorage for persistence
+      localStorage.setItem(`template_${data.templateId}`, JSON.stringify(data.template));
+      // Go to analyze page for scene detection if it's a reel
+      if (data.template.type === 'reel' && data.template.videoInfo?.videoUrl) {
+        router.push(`/analyze/${data.templateId}`);
+      } else {
+        router.push(`/template/${data.templateId}`);
+      }
     } catch (error) {
       console.error('Extract error:', error);
     } finally {

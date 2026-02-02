@@ -2,30 +2,57 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { X, Sparkles, Clock, MapPin, Film, Type } from 'lucide-react';
+
+interface TextStyle {
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: string;
+  color: string;
+  backgroundColor?: string;
+  hasEmoji: boolean;
+  emoji?: string;
+  position: 'top' | 'center' | 'bottom';
+}
+
+interface SceneInfo {
+  id: number;
+  startTime: number;
+  endTime: number;
+  duration: number;
+  textOverlay: string | null;
+  textStyle?: TextStyle;
+  description: string;
+}
+
+interface LocationGroup {
+  locationId: number;
+  locationName: string;
+  scenes: SceneInfo[];
+  totalDuration: number;
+}
 
 interface Template {
   id: string;
   platform: string;
   type: 'reel' | 'carousel';
-  duration?: number;
-  clips?: Array<{
-    id: number;
-    name: string;
-    startTime: number;
-    endTime: number;
-    textOverlay?: string;
-  }>;
+  totalDuration?: number;
+  videoInfo?: {
+    title: string;
+    author: string;
+    duration: number;
+    thumbnail: string;
+  };
+  locations?: LocationGroup[];
   slides?: Array<{
     id: number;
     textOverlay: string;
     position: string;
     style: string;
   }>;
-  music?: {
-    name: string;
-    duration: number;
-  };
 }
+
+const LOCATION_COLORS = ['#8B5CF6', '#14B8A6', '#F472B6', '#FCD34D', '#E879F9', '#A78BFA', '#22D3EE'];
 
 export default function TemplateBreakdown() {
   const params = useParams();
@@ -39,11 +66,19 @@ export default function TemplateBreakdown() {
 
   const fetchTemplate = async () => {
     try {
+      const stored = localStorage.getItem(`template_${params.id}`);
+      if (stored) {
+        setTemplate(JSON.parse(stored));
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch(`/api/template/${params.id}`);
       if (!response.ok) throw new Error('Template not found');
 
       const data = await response.json();
       setTemplate(data);
+      localStorage.setItem(`template_${params.id}`, JSON.stringify(data));
     } catch (error) {
       console.error('Failed to load template:', error);
     } finally {
@@ -54,7 +89,6 @@ export default function TemplateBreakdown() {
   const handleUseTemplate = () => {
     if (!template) return;
 
-    // Navigate to the editor based on template type
     if (template.type === 'reel') {
       router.push(`/editor/reel/${params.id}`);
     } else {
@@ -62,12 +96,26 @@ export default function TemplateBreakdown() {
     }
   };
 
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `0:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Count text overlays
+  const countTextOverlays = (): number => {
+    if (!template?.locations) return 0;
+    return template.locations.reduce((sum, loc) =>
+      sum + loc.scenes.filter(s => s.textOverlay).length, 0
+    );
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading template...</p>
+          <div className="w-16 h-16 border-4 border-[#8B5CF6] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading template...</p>
         </div>
       </div>
     );
@@ -75,12 +123,12 @@ export default function TemplateBreakdown() {
 
   if (!template) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-600">Template not found</p>
+          <p className="text-gray-400">Template not found</p>
           <button
             onClick={() => router.push('/')}
-            className="mt-4 text-purple-500 hover:underline"
+            className="mt-4 text-[#8B5CF6] hover:underline"
           >
             Go back
           </button>
@@ -89,105 +137,129 @@ export default function TemplateBreakdown() {
     );
   }
 
+  const isReel = template.type === 'reel';
+  const locations = template.locations || [];
+  const totalScenes = locations.reduce((sum, loc) => sum + loc.scenes.length, 0);
+  const totalDuration = template.totalDuration || template.videoInfo?.duration || 0;
+  const textOverlayCount = countTextOverlays();
+
+  const title = template.videoInfo?.title?.slice(0, 50) || 'Video Template';
+  const author = template.videoInfo?.author || 'Unknown';
+
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b">
+    <div className="min-h-screen bg-black flex flex-col">
+      {/* Top Bar */}
+      <div className="flex items-center justify-between h-12 px-4 pt-4">
         <button
           onClick={() => router.push('/')}
-          className="text-red-500 font-medium"
+          className="w-9 h-9 flex items-center justify-center rounded-[18px] bg-white/20"
         >
-          ← Back
+          <X className="w-5 h-5 text-white" />
         </button>
-        <h2 className="text-xl font-bold text-gray-900">Template Preview</h2>
-        <div className="w-16"></div>
+        <h2 className="text-[15px] font-semibold text-white">Template Preview</h2>
+        <div className="w-9 h-9" />
       </div>
 
-      <div className="max-w-md mx-auto p-6">
-        {/* Preview Area */}
-        <div className="bg-black rounded-2xl aspect-[9/16] flex items-center justify-center mb-6 relative overflow-hidden">
-          <div className="text-center text-white">
-            <div className="text-4xl mb-2">📹</div>
-            <p className="text-sm">Preview</p>
-            <p className="text-xs opacity-70">9:16</p>
+      {/* Preview Area */}
+      <div className="flex items-center justify-center py-5 px-4">
+        <div
+          className="w-[200px] h-[355px] rounded-xl relative overflow-hidden"
+          style={{
+            backgroundColor: '#1A1A2E',
+            backgroundImage: template.videoInfo?.thumbnail ? `url(${template.videoInfo.thumbnail})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
+          }}
+        >
+          {/* Video Preview Overlay */}
+          <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-white/30 flex items-center justify-center backdrop-blur-sm">
+              <div className="w-0 h-0 border-t-[12px] border-t-transparent border-l-[20px] border-l-white border-b-[12px] border-b-transparent ml-1" />
+            </div>
+          </div>
+          {/* Duration Badge */}
+          <div className="absolute bottom-3 left-3 px-2.5 py-1.5 rounded-xl bg-black/80">
+            <span className="text-white text-[11px] font-semibold">{formatDuration(totalDuration)}</span>
+          </div>
+          {/* Scenes Badge */}
+          <div className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-xl bg-[#8B5CF6]">
+            <span className="text-white text-[11px] font-semibold">{totalScenes} scenes</span>
           </div>
         </div>
+      </div>
 
-        {/* Template Info */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            {template.type === 'reel' ? 'Top 10 Cafes' : '5 Must-See Spots'}
-          </h1>
-          <p className="text-gray-600">
-            {template.type === 'reel'
-              ? `${template.clips?.length} clips across ${template.duration}s`
-              : `${template.slides?.length} slides`
-            }
-          </p>
-        </div>
-
-        {/* Color Palette */}
-        <div className="flex gap-2 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-purple-400"></div>
-          <div className="w-10 h-10 rounded-lg bg-pink-400"></div>
-          <div className="w-10 h-10 rounded-lg bg-teal-400"></div>
-          <div className="w-10 h-10 rounded-lg bg-yellow-400"></div>
-          <div className="w-10 h-10 rounded-lg bg-blue-400"></div>
-        </div>
-
-        {/* Details */}
-        <div className="bg-gray-50 rounded-2xl p-6 mb-6">
-          <h3 className="font-semibold text-gray-900 mb-4">
-            {template.type === 'reel' ? 'Clips Detected' : 'Slides Detected'}
-          </h3>
-          <div className="space-y-3">
-            {template.type === 'reel' ? (
-              template.clips?.map((clip) => (
-                <div key={clip.id} className="flex items-center gap-3">
-                  <div className="w-16 h-28 bg-gray-300 rounded-lg flex-shrink-0"></div>
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold text-red-500">
-                      {clip.startTime}s - {clip.endTime}s
-                    </div>
-                    <div className="text-sm text-gray-900">{clip.name}</div>
-                    {clip.textOverlay && (
-                      <div className="text-xs text-gray-600">Text: "{clip.textOverlay}"</div>
-                    )}
-                  </div>
-                </div>
-              ))
-            ) : (
-              template.slides?.map((slide) => (
-                <div key={slide.id} className="flex items-center gap-3">
-                  <div className="w-16 h-16 bg-gray-300 rounded-lg flex-shrink-0"></div>
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold text-gray-900">Slide {slide.id}</div>
-                    <div className="text-xs text-gray-600">Text: "{slide.textOverlay}"</div>
-                  </div>
-                </div>
-              ))
-            )}
+      {/* Template Info */}
+      <div className="px-4 py-3">
+        <p className="text-xs text-[#8B5CF6] font-medium mb-1">@{author}</p>
+        <h1 className="text-lg font-bold text-white line-clamp-2">{title}</h1>
+        <div className="flex items-center gap-4 mt-2 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <Clock className="w-4 h-4 text-white/50" />
+            <span className="text-[13px] text-white/50">{formatDuration(totalDuration)}</span>
           </div>
-
-          {template.music && (
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <div className="flex items-center gap-3 bg-yellow-50 rounded-xl p-3">
-                <span className="text-xl">🎵</span>
-                <div className="flex-1">
-                  <div className="text-sm font-semibold text-gray-900">Music</div>
-                  <div className="text-xs text-gray-600">{template.music.name}</div>
-                </div>
-              </div>
+          <div className="flex items-center gap-1.5">
+            <MapPin className="w-4 h-4 text-white/50" />
+            <span className="text-[13px] text-white/50">{locations.filter(l => l.locationId > 0 && l.locationName !== 'Outro').length} locations</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Film className="w-4 h-4 text-white/50" />
+            <span className="text-[13px] text-white/50">{totalScenes} scenes</span>
+          </div>
+          {textOverlayCount > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Type className="w-4 h-4 text-white/50" />
+              <span className="text-[13px] text-white/50">{textOverlayCount} text overlays</span>
             </div>
           )}
         </div>
+      </div>
 
-        {/* Use Template Button */}
+      {/* Location/Scene Breakdown */}
+      {isReel && locations.length > 0 && (
+        <div className="flex-1 overflow-y-auto px-4 py-2">
+          <h3 className="text-sm font-semibold text-white/70 mb-3">Scene Breakdown</h3>
+          <div className="space-y-3">
+            {locations.map((location, locIdx) => (
+              <div key={location.locationId} className="bg-[#1A1A2E] rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: LOCATION_COLORS[locIdx % LOCATION_COLORS.length] }}
+                    />
+                    <span className="text-sm font-semibold text-white">{location.locationName}</span>
+                  </div>
+                  <span className="text-xs text-white/50">{location.totalDuration}s</span>
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {location.scenes.map((scene) => (
+                    <div
+                      key={scene.id}
+                      className="px-2 py-1 rounded-md text-[10px] text-white flex items-center gap-1"
+                      style={{ backgroundColor: LOCATION_COLORS[locIdx % LOCATION_COLORS.length] + '40' }}
+                    >
+                      {scene.duration}s
+                      {scene.textOverlay && <Type className="w-2.5 h-2.5" />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Spacer */}
+      <div className="flex-1 min-h-4" />
+
+      {/* Bottom Area - Use Template Button */}
+      <div className="px-4 pt-4 pb-8">
         <button
           onClick={handleUseTemplate}
-          className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-4 rounded-2xl hover:opacity-90 transition-opacity"
+          className="w-full h-[52px] flex items-center justify-center gap-2 rounded-[26px] bg-[#8B5CF6]"
         >
-          Use This Template
+          <Sparkles className="w-[18px] h-[18px] text-white" />
+          <span className="text-[15px] font-semibold text-white">Use This Template</span>
         </button>
       </div>
     </div>
