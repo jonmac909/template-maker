@@ -76,6 +76,14 @@ export default function TemplateBreakdown() {
     fetchTemplate();
   }, [params.id]);
 
+  // Auto-trigger deep analysis when template loads if not yet analyzed
+  useEffect(() => {
+    if (template && !template.deepAnalyzed && template.videoInfo?.videoUrl && !deepAnalyzing) {
+      // Auto-start deep analysis to extract actual text from video frames
+      handleDeepAnalyze();
+    }
+  }, [template?.id, template?.deepAnalyzed]);
+
   const fetchTemplate = async () => {
     try {
       const stored = localStorage.getItem(`template_${params.id}`);
@@ -218,6 +226,9 @@ export default function TemplateBreakdown() {
           deepAnalyzed: true,
           locations: updatedLocations,
           extractedFonts: result.analysis.extractedFonts,
+          // IMPORTANT: Preserve draft status
+          isDraft: template.isDraft,
+          isEdit: template.isEdit,
         };
 
         localStorage.setItem(`template_${params.id}`, JSON.stringify(updatedTemplate));

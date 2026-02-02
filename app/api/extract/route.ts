@@ -625,29 +625,25 @@ async function analyzeVideoWithClaude(
     const countMatch = videoInfo.title.match(/(\d+)\s*(must|best|top|places|things|spots|cafe|restaurant|unique)/i);
     const expectedCount = countMatch ? parseInt(countMatch[1]) : 5;
 
-    const prompt = `You are analyzing TikTok video cover images to extract the EXACT visible text, fonts, and styling.
+    const prompt = `You are analyzing TikTok video cover/thumbnail images to extract the EXACT visible text.
 
 VIDEO INFO:
+- Title from TikTok: "${videoInfo.title}" (this may differ from what's shown in the video!)
 - Author: @${videoInfo.author}
 - Duration: ${videoInfo.duration} seconds
-- Expected locations: approximately ${expectedCount}
 
-CRITICAL FONT & TEXT ANALYSIS INSTRUCTIONS:
-1. READ THE EXACT TEXT you see on screen - do NOT invent or guess text
-2. If you see an intro/hook text like "10 Dreamiest Places in Northern Thailand", extract it EXACTLY
-3. If you can't clearly read intro text, set it to null
-4. For numbered locations (1. Blue Temple, 2. White Temple), extract EXACT names
-5. ANALYZE FONTS CAREFULLY:
-   - Is the title/hook in a decorative script font? (like Pacifico, Dancing Script)
-   - Is it a clean sans-serif? (like Poppins, Montserrat)
-   - Is it a bold display font? (like Bebas Neue, Oswald)
-   - Are numbers in a different style?
+CRITICAL INSTRUCTIONS:
+1. LOOK AT THE IMAGES - find ANY text overlays visible
+2. The INTRO/HOOK TEXT is usually a catchy phrase like:
+   - "10 Dreamiest Places in Northern Thailand"
+   - "Best Cafes in Tokyo You NEED to Visit"
+   - "Hidden Gems in Bali"
+3. READ EXACTLY what you see - do NOT use the video title from TikTok metadata!
+4. The video title "${videoInfo.title}" is just metadata - the ACTUAL intro text in the video may be DIFFERENT
+5. Look for numbered lists (1. Blue Temple, 2. Cafe Name)
+6. Note font styles: script/cursive, bold display, clean sans-serif
 
-DESCRIBE THE FONTS YOU SEE:
-- "Elegant flowing script with swashes" → script style
-- "Bold condensed uppercase" → display style
-- "Clean modern rounded sans-serif" → sans-serif style
-- "Classic serif with flourishes" → serif style
+IMPORTANT: Extract what's VISIBLE in the images, not the metadata title!
 
 Respond with ONLY valid JSON:
 
@@ -655,35 +651,34 @@ Respond with ONLY valid JSON:
   "type": "reel",
   "totalDuration": ${videoInfo.duration},
   "extractedText": {
-    "hookText": "EXACT intro text if visible (e.g., '10 Dreamiest Places in Northern Thailand') or null if not readable",
-    "visibleLocations": ["The Blue Temple", "Cafe Name", "etc - EXACT names you can read"]
+    "hookText": "THE EXACT TEXT YOU READ FROM THE IMAGE - NOT the metadata title '${videoInfo.title}'",
+    "visibleLocations": ["Blue Temple", "Cafe Name", "etc"]
   },
   "extractedFonts": {
-    "titleFont": { "style": "script|serif|sans-serif|display", "weight": "normal|bold", "description": "DESCRIBE what you see - e.g., 'elegant flowing script with decorative swashes'" },
-    "bodyFont": { "style": "serif|sans-serif", "weight": "normal|bold", "description": "e.g., 'clean rounded sans-serif'" },
-    "accentFont": { "style": "serif|sans-serif|display", "weight": "normal|bold", "description": "e.g., 'bold condensed display'" }
+    "titleFont": { "style": "script|sans-serif|display", "weight": "bold", "description": "describe font" },
+    "bodyFont": { "style": "sans-serif", "weight": "normal", "description": "describe font" }
   },
-  "visualStyle": "elegant|bold|minimal|playful|cinematic|vintage",
+  "visualStyle": "elegant|bold|minimal|playful",
   "locations": [
     {
       "locationId": 0,
       "locationName": "Intro",
-      "scenes": [{ "id": 1, "startTime": 0, "endTime": 2, "duration": 2, "textOverlay": "EXACT intro text if readable, or null", "description": "Hook shot with title text" }],
+      "scenes": [{ "id": 1, "startTime": 0, "endTime": 2, "duration": 2, "textOverlay": "EXACT TEXT FROM IMAGE HERE", "description": "Hook" }],
       "totalDuration": 2
     },
     {
       "locationId": 1,
-      "locationName": "EXACT location name from image",
-      "scenes": [{ "id": 11, "startTime": 2, "endTime": 4, "duration": 2, "textOverlay": "1. EXACT name from image", "description": "Shot description" }],
-      "totalDuration": 2
+      "locationName": "Location 1",
+      "scenes": [{ "id": 11, "startTime": 2, "endTime": 5, "duration": 3, "textOverlay": "1. Name", "description": "Shot" }],
+      "totalDuration": 3
     }
   ],
-  "music": { "name": "Trending TikTok Sound", "hasMusic": true }
+  "music": { "name": "Sound", "hasMusic": true }
 }
 
-Create ${expectedCount} location entries plus Intro and Outro.
-IMPORTANT: Only include intro textOverlay if you can CLEARLY READ IT in the image. If not visible, set to null.
-Respond with ONLY the JSON:`;
+Create ${expectedCount} locations plus Intro and Outro.
+READ THE ACTUAL TEXT IN THE IMAGES - the hook text is likely different from "${videoInfo.title}"!
+Respond with ONLY JSON:`;
 
     let analysisResult: VideoAnalysis;
 
@@ -796,10 +791,6 @@ Respond with ONLY the JSON:`;
                 data: base64Image,
               },
             });
-            messageContent.push({
-              type: 'text',
-              text: `LOOK AT THIS IMAGE CAREFULLY. This is a thumbnail from a TikTok video. Read any text overlays, location names, or numbered items visible. Then:\n\n${prompt}`,
-            });
             hasImage = true;
             break; // Success, exit the loop
           } else {
@@ -820,6 +811,17 @@ Respond with ONLY the JSON:`;
       messageContent.push({
         type: 'text',
         text: prompt,
+      });
+    } else {
+      // Add OCR-specific instruction before the main prompt
+      messageContent.push({
+        type: 'text',
+        text: `PERFORM OCR: Read ALL text visible in these images character by character.
+The text overlay in TikTok videos is usually large, stylized text.
+DO NOT assume the text matches the video metadata.
+OCR the actual pixels and tell me EXACTLY what letters/words you see.
+
+` + prompt,
       });
     }
 
@@ -861,14 +863,12 @@ Respond with ONLY the JSON:`;
       console.log('Mapped fonts:', mappedFonts);
 
       // Add text styles and calculate location durations
-      // IMPORTANT: Force intro (locationId=0) textOverlay to null - thumbnails show video title, not actual intro text
+      // Keep whatever Claude extracted from the images
       analysisResult.locations = analysisResult.locations.map((loc, locIdx) => ({
         ...loc,
         totalDuration: loc.scenes.reduce((sum, scene) => sum + scene.duration, 0),
         scenes: loc.scenes.map((scene, sceneIdx) => ({
           ...scene,
-          // Clear intro text - user must fill in or use Deep Analyze
-          textOverlay: loc.locationId === 0 ? null : scene.textOverlay,
           textStyle: getTextStyleForSceneWithFonts(loc.locationId, sceneIdx, scene.textOverlay, mappedFonts)
         }))
       }));
