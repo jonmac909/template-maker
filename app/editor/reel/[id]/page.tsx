@@ -157,6 +157,7 @@ export default function ReelEditor() {
   const [videoTitle, setVideoTitle] = useState('');
   const [fullCaption, setFullCaption] = useState('');
   const [showCaptionDropdown, setShowCaptionDropdown] = useState(false);
+  const [editingCaption, setEditingCaption] = useState(false);
   const [titleTextStyle, setTitleTextStyle] = useState<TextStyle>(DEFAULT_TEXT_STYLE);
   const [locationTextStyle, setLocationTextStyle] = useState<TextStyle>(DEFAULT_TEXT_STYLE);
   const [reanalyzing, setReanalyzing] = useState(false);
@@ -240,9 +241,8 @@ export default function ReelEditor() {
     const hookOnly = extractHookFromTitle(fullTitle) || fullTitle;
     setVideoTitle(hookOnly);
 
-    // Store full caption (everything before hashtags)
-    const captionWithoutHashtags = fullTitle.split(/\s*#/)[0].trim();
-    setFullCaption(captionWithoutHashtags);
+    // Store full caption (including hashtags)
+    setFullCaption(fullTitle);
 
     // Create extracted font styles
     let titleStyle = DEFAULT_TEXT_STYLE;
@@ -1028,9 +1028,30 @@ export default function ReelEditor() {
 
                 {showCaptionDropdown && (
                   <div className="px-4 pb-4">
-                    <div className="bg-[#2D2640] rounded-xl p-3 max-h-40 overflow-y-auto">
-                      <p className="text-sm text-white/80 whitespace-pre-wrap">{fullCaption}</p>
-                    </div>
+                    {editingCaption ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={fullCaption}
+                          onChange={(e) => setFullCaption(e.target.value)}
+                          className="w-full bg-[#2D2640] rounded-xl p-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6] min-h-[120px] resize-none"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => setEditingCaption(false)}
+                          className="w-full py-2 rounded-lg bg-[#8B5CF6] text-white text-sm font-semibold"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setEditingCaption(true)}
+                        className="w-full text-left bg-[#2D2640] rounded-xl p-3 max-h-40 overflow-y-auto"
+                      >
+                        <p className="text-sm text-white/80 whitespace-pre-wrap">{fullCaption}</p>
+                        <p className="text-[10px] text-[#8B5CF6] mt-2">Tap to edit</p>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
