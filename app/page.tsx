@@ -32,9 +32,9 @@ export default function Home() {
 
       // Store template in localStorage for persistence
       localStorage.setItem(`template_${data.templateId}`, JSON.stringify(data.template));
-      // Go to analyze page for scene detection if it's a reel
-      if (data.template.type === 'reel' && data.template.videoInfo?.videoUrl) {
-        router.push(`/analyze/${data.templateId}`);
+      // Go directly to editor (skip analyze page - CORS blocks video loading)
+      if (data.template.type === 'reel') {
+        router.push(`/editor/reel/${data.templateId}`);
       } else {
         router.push(`/template/${data.templateId}`);
       }
