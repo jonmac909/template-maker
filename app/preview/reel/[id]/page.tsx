@@ -58,7 +58,46 @@ export default function ReelPreview() {
   };
 
   const handleExportCapCut = () => {
-    alert('Opening export options for CapCut...');
+    if (!template) return;
+
+    // Build CapCut-compatible template structure
+    const capCutTemplate = {
+      name: template.videoInfo?.title || 'Untitled Template',
+      duration: Number(template.totalDuration.toFixed(1)),
+      tracks: {
+        video: template.locations.flatMap((loc, locIdx) =>
+          loc.scenes.map((scene, sceneIdx) => ({
+            id: `${locIdx}-${sceneIdx}`,
+            type: 'video_placeholder',
+            duration: Number(scene.duration.toFixed(1)),
+            locationId: loc.locationId,
+            locationName: loc.locationName,
+          }))
+        ),
+        text: template.locations.map((loc) => ({
+          id: `text-${loc.locationId}`,
+          type: 'text',
+          content: loc.locationName,
+          duration: Number(loc.totalDuration.toFixed(1)),
+        })),
+      },
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        source: 'TemplateMaker',
+        originalAuthor: template.videoInfo?.author || 'Unknown',
+      },
+    };
+
+    // Download as JSON file
+    const blob = new Blob([JSON.stringify(capCutTemplate, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `capcut-template-${params.id}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleDownloadToPhone = () => {
