@@ -156,21 +156,76 @@ export default function TemplateBreakdown() {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  // Helper to fetch thumbnail as base64 from browser (avoids CORS issues)
+  const fetchThumbnailAsBase64 = async (thumbnailUrl: string): Promise<string | null> => {
+    if (!thumbnailUrl || !isBrowser()) return null;
+
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+            console.log('Thumbnail fetched as base64, size:', base64.length);
+            resolve(base64);
+          } else {
+            resolve(null);
+          }
+        } catch (e) {
+          console.error('Failed to convert thumbnail to base64:', e);
+          resolve(null);
+        }
+      };
+
+      img.onerror = () => {
+        console.log('Failed to load thumbnail image');
+        resolve(null);
+      };
+
+      // Try loading the image
+      img.src = thumbnailUrl;
+
+      // Timeout after 5 seconds
+      setTimeout(() => resolve(null), 5000);
+    });
+  };
+
   const handleDeepAnalyze = async () => {
     if (!template || !isBrowser()) return;
 
     const videoUrl = template.videoInfo?.videoUrl;
-    if (!videoUrl) {
-      setAnalysisStatus('No video URL available for deep analysis');
+    const thumbnailUrl = template.videoInfo?.thumbnail;
+
+    if (!videoUrl && !thumbnailUrl) {
+      setAnalysisStatus('No video or thumbnail available for analysis');
       setTimeout(() => setAnalysisStatus(''), 3000);
       return;
     }
 
     setDeepAnalyzing(true);
-    setAnalysisStatus('Loading video...');
+    setAnalysisStatus('Loading thumbnail...');
 
     try {
       const duration = template.totalDuration || template.videoInfo?.duration || 30;
+
+      // FIRST: Try to get thumbnail as base64 from browser (this is the key fix!)
+      let thumbnailBase64: string | null = null;
+      if (thumbnailUrl) {
+        console.log('Fetching thumbnail from browser:', thumbnailUrl.substring(0, 80));
+        thumbnailBase64 = await fetchThumbnailAsBase64(thumbnailUrl);
+        if (thumbnailBase64) {
+          console.log('Thumbnail captured successfully!');
+          setAnalysisStatus('Thumbnail captured! Extracting video frames...');
+        }
+      }
 
       // Generate timestamps for frame extraction
       const timestamps = generateFrameTimestamps(duration, {
@@ -181,25 +236,36 @@ export default function TemplateBreakdown() {
 
       setAnalysisStatus(`Extracting ${timestamps.length} frames...`);
 
-      // Extract frames from video
-      const frames = await extractVideoFrames(videoUrl, timestamps, {
-        maxWidth: 720,
-        quality: 0.85,
-        timeout: 45000,
-      });
-
-      if (frames.length === 0) {
-        throw new Error('Could not extract frames from video');
+      // Extract frames from video (if available)
+      let frames: { timestamp: number; base64: string }[] = [];
+      if (videoUrl) {
+        try {
+          const extractedFrames = await extractVideoFrames(videoUrl, timestamps, {
+            maxWidth: 720,
+            quality: 0.85,
+            timeout: 45000,
+          });
+          frames = extractedFrames.map(f => ({ timestamp: f.timestamp, base64: f.base64 }));
+        } catch (e) {
+          console.log('Video frame extraction failed, using thumbnail only:', e);
+        }
       }
 
-      setAnalysisStatus(`Analyzing ${frames.length} frames with AI...`);
+      // We need at least thumbnail OR frames
+      if (!thumbnailBase64 && frames.length === 0) {
+        throw new Error('Could not extract thumbnail or frames');
+      }
 
-      // Send frames to API for analysis
+      const frameCount = frames.length + (thumbnailBase64 ? 1 : 0);
+      setAnalysisStatus(`Analyzing ${frameCount} images with AI...`);
+
+      // Send thumbnail + frames to API for analysis
       const response = await fetch('/api/analyze-frames', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          frames: frames.map(f => ({ timestamp: f.timestamp, base64: f.base64 })),
+          thumbnailBase64, // NEW: Include thumbnail from browser!
+          frames,
           videoInfo: {
             title: template.videoInfo?.title || 'Unknown',
             author: template.videoInfo?.author || 'Unknown',

@@ -9,6 +9,7 @@ interface FrameData {
 }
 
 interface AnalysisRequest {
+  thumbnailBase64?: string; // Thumbnail fetched from browser (priority!)
   frames: FrameData[];
   videoInfo: {
     title: string;
@@ -21,77 +22,98 @@ interface AnalysisRequest {
 export async function POST(request: NextRequest) {
   try {
     const body: AnalysisRequest = await request.json();
-    const { frames, videoInfo, expectedLocations = 5 } = body;
+    const { thumbnailBase64, frames, videoInfo, expectedLocations = 5 } = body;
 
-    if (!frames || frames.length === 0) {
-      return NextResponse.json({ error: 'No frames provided' }, { status: 400 });
+    // We need either thumbnail or frames
+    if ((!frames || frames.length === 0) && !thumbnailBase64) {
+      return NextResponse.json({ error: 'No frames or thumbnail provided' }, { status: 400 });
     }
 
-    console.log(`Analyzing ${frames.length} frames for video by @${videoInfo.author}`);
+    const hasThumbnail = !!thumbnailBase64;
+    const totalImages = (hasThumbnail ? 1 : 0) + (frames?.length || 0);
+    console.log(`Analyzing ${totalImages} images for video by @${videoInfo.author} (thumbnail: ${hasThumbnail})`);
 
-    // Build message content with all frames
+    // Build message content with thumbnail FIRST (most important!)
     type AllowedMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
     type ImageContent = { type: 'image'; source: { type: 'base64'; media_type: AllowedMediaType; data: string } };
     type TextContent = { type: 'text'; text: string };
     const messageContent: Array<TextContent | ImageContent> = [];
 
-    // Add each frame as an image
-    for (const frame of frames) {
+    // ⭐ ADD THUMBNAIL FIRST - This is the key fix!
+    // The thumbnail usually shows the title card with the hook text
+    if (thumbnailBase64) {
       messageContent.push({
         type: 'image',
         source: {
           type: 'base64',
           media_type: 'image/jpeg',
-          data: frame.base64,
+          data: thumbnailBase64,
         },
       });
       messageContent.push({
         type: 'text',
-        text: `[Frame at ${frame.timestamp}s]`,
+        text: `[THUMBNAIL - THIS IS THE MOST IMPORTANT IMAGE! Read ALL text visible here, especially the big title/hook text]`,
       });
     }
 
-    // Add analysis prompt
-    const prompt = `You are analyzing ${frames.length} frames extracted from a TikTok video. The FIRST TWO FRAMES are from the intro/title card.
+    // Add each frame as an image
+    if (frames && frames.length > 0) {
+      for (const frame of frames) {
+        messageContent.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/jpeg',
+            data: frame.base64,
+          },
+        });
+        messageContent.push({
+          type: 'text',
+          text: `[Frame at ${frame.timestamp}s]`,
+        });
+      }
+    }
+
+    // Add analysis prompt - emphasize thumbnail OCR
+    const prompt = `You are analyzing images from a TikTok video.${hasThumbnail ? ' THE FIRST IMAGE IS THE THUMBNAIL - this shows the video title card with the hook text.' : ''}
 
 VIDEO INFO:
 - Author: @${videoInfo.author}
 - Duration: ${videoInfo.duration} seconds
 - Expected locations: approximately ${expectedLocations}
 
-CRITICAL - EXTRACTING THE INTRO/HOOK TEXT:
-The FIRST TWO FRAMES (at 0.1s and 0.5s) show the INTRO/TITLE CARD.
-Look for the BIG TEXT - this is usually something like:
+🔴 CRITICAL - YOUR #1 TASK - READ THE HOOK TEXT:
+${hasThumbnail ? 'The THUMBNAIL (first image) shows the TITLE CARD.' : 'The first frames show the TITLE CARD.'}
+Look for the BIG TEXT on the image. This is the video's hook/title.
+
+Examples of what to look for:
 - "10 Dreamiest Places in Northern Thailand"
 - "5 Must-Visit Cafes in Bangkok"
-- "Top 10 Hidden Gems"
+- "Top 10 Hidden Gems in Bali"
 
-This text is the HOOK - the main title of the video. READ IT EXACTLY as it appears.
+⚠️ READ THE TEXT CHARACTER BY CHARACTER. Copy it EXACTLY as it appears.
 
-ANALYZE EACH FRAME AND EXTRACT:
+WHAT TO EXTRACT:
 
-1. INTRO/TITLE CARD (FIRST TWO FRAMES - THIS IS THE MOST IMPORTANT):
-   - Read the EXACT BIG TEXT overlaid on the video
-   - This is usually in large, stylized font
-   - Examples: "10 Dreamiest Places in Northern Thailand", "Best Cafes in Tokyo"
-   - Copy it EXACTLY including emojis if any
+1. HOOK TEXT (from ${hasThumbnail ? 'thumbnail' : 'first frames'}) - MOST IMPORTANT:
+   - The big stylized text on the title card
+   - Copy every word exactly
+   - Include numbers ("10", "5", etc.)
+   - Include destination name
 
-2. LOCATION FRAMES (middle frames):
-   - Read EXACT location names (e.g., "📍 The Blue Temple", "1. Cafe Name")
-   - Note if names are numbered (1., 2., 3.)
+2. LOCATION NAMES (from middle frames):
+   - Read exact location names
+   - Note if numbered (1., 2., 3.)
 
-3. FONTS & STYLING:
-   - Describe the title font style
-
-4. OUTRO FRAME (last frame):
-   - Any call-to-action text
+3. FONT STYLES:
+   - Describe what the title font looks like
 
 Respond with ONLY valid JSON:
 
 {
   "extractedText": {
-    "hookText": "THE EXACT BIG TEXT FROM THE FIRST FRAMES - this is critical!",
-    "locationNames": ["location names in order"],
+    "hookText": "COPY THE EXACT BIG TEXT FROM THE ${hasThumbnail ? 'THUMBNAIL' : 'FIRST FRAMES'} HERE",
+    "locationNames": ["location names you see"],
     "outroText": "CTA text or null"
   },
   "extractedFonts": {
@@ -115,19 +137,19 @@ Respond with ONLY valid JSON:
     {
       "locationId": 0,
       "locationName": "Intro",
-      "textOverlay": "THE EXACT HOOK TEXT FROM FRAME 1 or 2",
+      "textOverlay": "THE EXACT HOOK TEXT YOU READ FROM THE IMAGE",
       "timestamp": 0
     },
     {
       "locationId": 1,
       "locationName": "location name",
-      "textOverlay": "1. location name or null",
+      "textOverlay": "1. location name",
       "timestamp": 2
     }
   ]
 }
 
-IMPORTANT: The hookText and locations[0].textOverlay MUST be the actual text you see in the first frames. Do not make it up.`;
+🔴 REMEMBER: The hookText and locations[0].textOverlay MUST be the actual text you READ from the image. DO NOT make up or paraphrase the text.`;
 
     messageContent.push({ type: 'text', text: prompt });
 
@@ -157,7 +179,8 @@ IMPORTANT: The hookText and locations[0].textOverlay MUST be the actual text you
     return NextResponse.json({
       success: true,
       analysis,
-      framesAnalyzed: frames.length,
+      framesAnalyzed: totalImages,
+      hadThumbnail: hasThumbnail,
     });
   } catch (error) {
     console.error('Frame analysis error:', error);

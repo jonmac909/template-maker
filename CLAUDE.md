@@ -1,9 +1,16 @@
 # Project: Reel Template Extractor
 
+## ⚠️ CRITICAL: NO DEV SERVER - EVER
+- **NEVER run `npm run dev` or `next dev`**
+- **NEVER use localhost for testing**
+- **DO NOT start any local development servers**
+- All testing happens on production Vercel deployment ONLY
+
 ## Deployment
-- **NEVER use dev server for testing**
 - Deploy via **GitHub push** (Vercel auto-deploys from main branch)
-- To test changes: commit, push to GitHub, wait for Vercel deployment
+- Vercel project: `template-maker` → https://template-maker-one.vercel.app
+- To test changes: commit → push to GitHub → wait for Vercel deployment
+- Use `npx vercel --prod` for manual deploys if needed
 
 ## Tech Stack
 - Next.js 16.1.6 with App Router
@@ -16,6 +23,6 @@
 - `/api/analyze-frames` - Deep analyze video frames with Claude Vision
 
 ## Important Notes
-- TikTok thumbnails show video TITLE, not actual intro text
-- Intro textOverlay is forced to null - users fill in manually or use Deep Analyze
-- Templates saved as drafts until user clicks "Save Template"
+- Deep analysis runs automatically when template loads (no manual button)
+- Templates auto-save after deep analysis completes
+- Frame extraction captures at 0.1s and 0.5s to catch intro/title text
