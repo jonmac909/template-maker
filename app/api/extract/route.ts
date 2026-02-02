@@ -567,17 +567,15 @@ async function getTikTokVideoInfo(url: string): Promise<{
         const videoUrl = cobaltData.url || '';
 
         // Extract video ID from URL for potential thumbnail
-        const videoIdMatch = url.match(/video\/(\d+)/);
         const videoId = videoIdMatch ? videoIdMatch[1] : '';
 
-        // Use username from URL
-        const usernameMatch = url.match(/@([^/]+)/);
-        const username = usernameMatch ? usernameMatch[1] : 'Creator';
+        // Use username from URL - reuse already declared variables
+        const usernameFromUrl = usernameMatch ? usernameMatch[1] : 'Creator';
 
         console.log('Cobalt API success! Video URL obtained.');
         return {
-          title: `Video by @${username}`,
-          author: username,
+          title: `Video by @${usernameFromUrl}`,
+          author: usernameFromUrl,
           duration: 30,
           thumbnail: '', // Cobalt doesn't provide thumbnail directly
           videoUrl: videoUrl,
@@ -621,14 +619,10 @@ async function getTikTokVideoInfo(url: string): Promise<{
   // Fallback: Create a basic template from URL parsing
   console.log('All APIs failed, using URL-based fallback for:', url);
 
-  // Extract username from URL if possible
-  const fallbackUsernameMatch = url.match(/@([^/]+)/);
-  const fallbackUsername = fallbackUsernameMatch ? fallbackUsernameMatch[1] : 'creator';
-
-  // Create a generic template
+  // Create a generic template (reuse already extracted username)
   return {
     title: 'TikTok Video Template',
-    author: fallbackUsername,
+    author: username,
     duration: 30, // Default duration
     thumbnail: '',
     videoUrl: '',
