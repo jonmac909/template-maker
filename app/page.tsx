@@ -13,50 +13,68 @@ export default function Home() {
   const router = useRouter();
 
   const handleExtract = async () => {
-    if (!url.trim()) {
+    const inputUrl = url.trim();
+    if (!inputUrl) {
       setError('Please paste a TikTok URL');
       return;
     }
 
+    console.log('Starting extraction for:', inputUrl);
     setLoading(true);
     setError(null);
     setStatus('Connecting...');
 
     try {
-      const platform = url.includes('tiktok') ? 'tiktok' : 'instagram';
+      const platform = inputUrl.includes('tiktok') ? 'tiktok' : 'instagram';
+      console.log('Platform detected:', platform);
       setStatus('Extracting video info...');
 
       const response = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, platform }),
+        body: JSON.stringify({ url: inputUrl, platform }),
       });
 
+      console.log('Response status:', response.status);
       setStatus('Processing response...');
-      const data = await response.json();
+
+      const text = await response.text();
+      console.log('Response text length:', text.length);
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        console.error('JSON parse error:', parseErr);
+        throw new Error('Server returned invalid response');
+      }
 
       if (!response.ok) {
+        console.error('Response not ok:', data);
         throw new Error(data.error || 'Failed to extract template');
       }
 
       if (!data.templateId || !data.template) {
+        console.error('Missing data:', { hasTemplateId: !!data.templateId, hasTemplate: !!data.template });
         throw new Error('Invalid response from server');
       }
 
+      console.log('Template ID:', data.templateId);
       setStatus('Saving template...');
+
       // Store template in localStorage for persistence
       localStorage.setItem(`template_${data.templateId}`, JSON.stringify(data.template));
+      console.log('Saved to localStorage');
 
-      setStatus('Redirecting...');
+      setStatus('Redirecting to editor...');
       // Go directly to editor (skip analyze page - CORS blocks video loading)
-      if (data.template.type === 'reel') {
-        router.push(`/editor/reel/${data.templateId}`);
-      } else {
-        router.push(`/template/${data.templateId}`);
-      }
+      const editorUrl = `/editor/reel/${data.templateId}`;
+      console.log('Navigating to:', editorUrl);
+      router.push(editorUrl);
     } catch (err) {
       console.error('Extract error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to extract. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to extract. Please try again.';
+      setError(errorMessage);
       setStatus('');
     } finally {
       setLoading(false);
