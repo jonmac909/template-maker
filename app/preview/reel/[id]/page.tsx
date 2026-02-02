@@ -359,9 +359,9 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
       </div>
 
       {/* Video Preview */}
-      <div className="flex justify-center px-6 pt-4 pb-6">
+      <div className="flex justify-center px-4 pt-4 pb-6">
         <div
-          className="w-[220px] h-[390px] rounded-2xl relative overflow-hidden bg-[#1A1A2E] border border-[#8B5CF6]/30"
+          className="w-full max-w-[320px] aspect-[9/16] rounded-2xl relative overflow-hidden bg-[#1A1A2E] border border-[#8B5CF6]/30"
           style={{
             backgroundImage: renderState.videoUrl
               ? undefined
