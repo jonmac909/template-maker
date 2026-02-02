@@ -235,8 +235,8 @@ export default function ReelEditor() {
     const fullTitle = data.videoInfo?.title || 'Video Template';
     setVideoTitle(fullTitle);
 
-    // Extract hook text from title as fallback for intro
-    const hookFromTitle = extractHookFromTitle(fullTitle);
+    // Don't use title as fallback - intro text should come from thumbnail extraction only
+    // const hookFromTitle = extractHookFromTitle(fullTitle);
 
     // Create extracted font styles
     let titleStyle = DEFAULT_TEXT_STYLE;
@@ -298,11 +298,8 @@ export default function ReelEditor() {
             // Apply extracted style if no style exists
             const sceneStyle = scene.textStyle || (isIntro ? titleStyle : locStyle);
 
-            // For intro scenes: use existing text, or fallback to hook extracted from title
-            let textOverlay = scene.textOverlay;
-            if (isIntro && !textOverlay && hookFromTitle) {
-              textOverlay = hookFromTitle;
-            }
+            // For intro scenes: only use existing text (from extraction), no title fallback
+            const textOverlay = scene.textOverlay || null;
 
             return {
               ...scene,
@@ -1124,8 +1121,8 @@ export default function ReelEditor() {
                             </div>
 
                             <p className="text-xs text-white/70 mb-2 line-clamp-2">
-                              {location.locationId === 0 && scene.textOverlay
-                                ? 'Hook shot with extracted intro text'
+                              {location.locationId === 0
+                                ? (scene.textOverlay ? 'Intro with extracted text' : 'Add your intro video clip')
                                 : scene.description}
                             </p>
 
@@ -1154,8 +1151,8 @@ export default function ReelEditor() {
                               ) : (
                                 <span className="text-[10px] text-white/40 flex-1 text-left truncate italic">
                                   {location.locationId === 0
-                                    ? '✏️ Add your intro text (e.g., "10 Dreamiest Places...")'
-                                    : 'Add text overlay...'}
+                                    ? '⬆️ Use "Extract Text" above to get intro text'
+                                    : '📍 ' + location.locationName}
                                 </span>
                               )}
                               <Pencil className="w-3 h-3 text-white/40 flex-shrink-0" />
