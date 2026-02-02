@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Settings, House, Plus, FileText, Play, Sparkles, Edit3, X, Trash2 } from 'lucide-react';
 
 // Version for debugging deployment - if you see this, the new code is deployed
-const APP_VERSION = 'v2.0.5-fix-trigger';
+const APP_VERSION = 'v2.0.6-extract-text';
 
 interface SavedTemplate {
   id: string;
