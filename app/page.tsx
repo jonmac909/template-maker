@@ -7,6 +7,7 @@ import { Settings, House, Plus, FileText, Play } from 'lucide-react';
 export default function Home() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('templates');
   const router = useRouter();
 
@@ -14,6 +15,7 @@ export default function Home() {
     if (!url.trim()) return;
 
     setLoading(true);
+    setError(null);
     try {
       const platform = url.includes('tiktok') ? 'tiktok' : 'instagram';
       const response = await fetch('/api/extract', {
@@ -22,9 +24,12 @@ export default function Home() {
         body: JSON.stringify({ url, platform }),
       });
 
-      if (!response.ok) throw new Error('Failed to extract');
-
       const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to extract template');
+      }
+
       // Store template in localStorage for persistence
       localStorage.setItem(`template_${data.templateId}`, JSON.stringify(data.template));
       // Go to analyze page for scene detection if it's a reel
@@ -33,8 +38,9 @@ export default function Home() {
       } else {
         router.push(`/template/${data.templateId}`);
       }
-    } catch (error) {
-      console.error('Extract error:', error);
+    } catch (err) {
+      console.error('Extract error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to extract. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -95,7 +101,10 @@ export default function Home() {
               <input
                 type="text"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => {
+                  setUrl(e.target.value);
+                  setError(null);
+                }}
                 placeholder="Paste TikTok or Reel URL..."
                 className="flex-1 bg-white rounded-[18px] px-4 py-3 text-sm placeholder:text-[var(--text-tertiary)] focus:outline-none"
                 disabled={loading}
@@ -105,9 +114,16 @@ export default function Home() {
                 disabled={loading || !url.trim()}
                 className="w-12 h-12 flex items-center justify-center rounded-[18px] bg-white hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
-                <span className="text-[var(--accent-purple)] text-xl">→</span>
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-[var(--accent-purple)] border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span className="text-[var(--accent-purple)] text-xl">→</span>
+                )}
               </button>
             </div>
+            {error && (
+              <p className="text-red-200 text-xs mt-1">{error}</p>
+            )}
           </div>
         </div>
 

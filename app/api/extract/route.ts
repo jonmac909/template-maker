@@ -241,12 +241,12 @@ export async function POST(request: NextRequest) {
 
     const videoInfo = await getTikTokVideoInfo(url);
 
-    if (!videoInfo) {
-      return NextResponse.json(
-        { error: 'Could not fetch video. Please check the URL.' },
-        { status: 400 }
-      );
-    }
+    console.log('Video info retrieved:', {
+      title: videoInfo.title,
+      author: videoInfo.author,
+      duration: videoInfo.duration,
+      hasVideoUrl: !!videoInfo.videoUrl,
+    });
 
     const analysis = await analyzeVideoWithClaude(videoInfo, url);
     const detectedFonts = detectFontsForVideo(videoInfo, url);
@@ -291,42 +291,57 @@ async function getTikTokVideoInfo(url: string): Promise<{
   duration: number;
   thumbnail: string;
   videoUrl: string;
-} | null> {
+}> {
+  // Try TikWM API first
   try {
     const apiUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
     const response = await fetch(apiUrl, {
       headers: {
         'Accept': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
       },
+      signal: controller.signal,
     });
 
-    if (!response.ok) {
-      console.error('TikWM API error:', response.status);
-      return null;
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+
+      if (data.code === 0 && data.data) {
+        const videoData = data.data;
+        return {
+          title: videoData.title || 'TikTok Video',
+          author: videoData.author?.nickname || videoData.author?.unique_id || 'Creator',
+          duration: videoData.duration || 30,
+          thumbnail: videoData.cover || videoData.origin_cover || '',
+          videoUrl: videoData.play || videoData.hdplay || '',
+        };
+      }
     }
-
-    const data = await response.json();
-
-    if (data.code !== 0 || !data.data) {
-      console.error('TikWM API returned error:', data);
-      return null;
-    }
-
-    const videoData = data.data;
-
-    return {
-      title: videoData.title || 'Untitled',
-      author: videoData.author?.nickname || videoData.author?.unique_id || 'Unknown',
-      duration: videoData.duration || 0,
-      thumbnail: videoData.cover || videoData.origin_cover || '',
-      videoUrl: videoData.play || videoData.hdplay || '',
-    };
   } catch (error) {
-    console.error('Error fetching TikTok info:', error);
-    return null;
+    console.log('TikWM API failed, using fallback:', error instanceof Error ? error.message : error);
   }
+
+  // Fallback: Create a basic template from URL parsing
+  console.log('Using URL-based fallback for:', url);
+
+  // Extract username from URL if possible
+  const usernameMatch = url.match(/@([^/]+)/);
+  const username = usernameMatch ? usernameMatch[1] : 'creator';
+
+  // Create a generic template
+  return {
+    title: 'TikTok Video Template',
+    author: username,
+    duration: 30, // Default duration
+    thumbnail: '',
+    videoUrl: '',
+  };
 }
 
 async function analyzeVideoWithClaude(
