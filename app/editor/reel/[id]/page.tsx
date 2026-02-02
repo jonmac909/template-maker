@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Sparkles, Check, Video, Clock, ChevronDown, ChevronUp, Pencil, X, Type, Save, Plus, RefreshCw, Loader2 } from 'lucide-react';
+import { ArrowLeft, Sparkles, Check, Clock, ChevronDown, ChevronUp, Pencil, X, Type, Save, Plus, RefreshCw, Loader2, Image, Wand2 } from 'lucide-react';
 import { getFontNames, addFontsToLibrary, initializeFontLibrary, trackFontUsage, addCustomFont, loadGoogleFonts } from '../../../lib/fontLibrary';
 
 interface TextStyle {
@@ -974,6 +974,64 @@ export default function ReelEditor() {
       {/* Locations List */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
         <div className="space-y-3">
+          {/* Thumbnail Section - Always at top */}
+          {template?.videoInfo?.thumbnail && (
+            <div className="bg-[#1A1A2E] rounded-2xl overflow-hidden">
+              {/* Thumbnail Header */}
+              <div className="flex items-center justify-between p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#8B5CF6]">
+                    <Image className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Thumbnail</h3>
+                    <p className="text-xs text-white/50">Cover image for your reel</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Thumbnail Content */}
+              <div className="px-4 pb-4">
+                <div className="bg-[#2D2640] rounded-xl p-4">
+                  <div className="flex gap-4">
+                    {/* Thumbnail preview */}
+                    <div
+                      className="w-28 h-36 rounded-lg bg-cover bg-center flex-shrink-0 border border-white/10"
+                      style={{ backgroundImage: `url(${template.videoInfo.thumbnail})` }}
+                    />
+                    {/* Actions */}
+                    <div className="flex-1 flex flex-col gap-2">
+                      <button
+                        onClick={handleReanalyze}
+                        disabled={reanalyzing}
+                        className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#8B5CF6] hover:bg-[#7C4FE0] transition-colors disabled:opacity-50"
+                      >
+                        {reanalyzing ? (
+                          <Loader2 className="w-4 h-4 text-white animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4 text-white" />
+                        )}
+                        <span className="text-sm font-semibold text-white">
+                          {reanalyzing ? 'Reading...' : 'Extract Text'}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => alert('Generate thumbnail coming soon!')}
+                        className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#2D2640] border border-white/20 hover:border-[#8B5CF6]/50 transition-colors"
+                      >
+                        <Wand2 className="w-4 h-4 text-white/70" />
+                        <span className="text-sm font-medium text-white/70">Generate Thumbnail</span>
+                      </button>
+                      {reanalyzeStatus && (
+                        <p className="text-xs text-[#8B5CF6] text-center">{reanalyzeStatus}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {locations.map((location, locIdx) => {
             const locationColor = LOCATION_COLORS[locIdx % LOCATION_COLORS.length];
             const filledInLocation = location.scenes.filter(s => s.filled).length;
@@ -1028,45 +1086,6 @@ export default function ReelEditor() {
                   </div>
                 </div>
 
-                {/* Thumbnail preview and re-analyze for Intro */}
-                {location.locationId === 0 && location.expanded && template?.videoInfo?.thumbnail && (
-                  <div className="px-4 pb-3">
-                    <div className="bg-[#2D2640] rounded-xl p-3">
-                      <p className="text-xs text-white/50 mb-2">Original thumbnail - extract intro text from this:</p>
-                      <div className="flex gap-3">
-                        {/* Thumbnail preview */}
-                        <div
-                          className="w-24 h-32 rounded-lg bg-cover bg-center flex-shrink-0 border border-white/10"
-                          style={{ backgroundImage: `url(${template.videoInfo.thumbnail})` }}
-                        />
-                        {/* Extract button and status */}
-                        <div className="flex-1 flex flex-col justify-center">
-                          <button
-                            onClick={handleReanalyze}
-                            disabled={reanalyzing}
-                            className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#8B5CF6] hover:bg-[#7C4FE0] transition-colors disabled:opacity-50"
-                          >
-                            {reanalyzing ? (
-                              <Loader2 className="w-4 h-4 text-white animate-spin" />
-                            ) : (
-                              <Sparkles className="w-4 h-4 text-white" />
-                            )}
-                            <span className="text-sm font-semibold text-white">
-                              {reanalyzing ? 'Reading...' : 'Extract Text'}
-                            </span>
-                          </button>
-                          {reanalyzeStatus && (
-                            <p className="text-xs text-[#8B5CF6] mt-2 text-center">{reanalyzeStatus}</p>
-                          )}
-                          <p className="text-[10px] text-white/30 mt-2 text-center">
-                            AI will read the text overlay from this image
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Scenes (Expanded) */}
                 {location.expanded && (
                   <div className="px-4 pb-4 space-y-2">
@@ -1099,7 +1118,7 @@ export default function ReelEditor() {
                               {scene.filled ? (
                                 <Check className="w-6 h-6 text-white" />
                               ) : (
-                                <Video className="w-5 h-5 text-white/30" />
+                                <Plus className="w-6 h-6 text-white/40" />
                               )}
                             </div>
                           </label>
@@ -1151,7 +1170,7 @@ export default function ReelEditor() {
                               ) : (
                                 <span className="text-[10px] text-white/40 flex-1 text-left truncate italic">
                                   {location.locationId === 0
-                                    ? '⬆️ Use "Extract Text" above to get intro text'
+                                    ? '✨ Extract text from Thumbnail above'
                                     : '📍 ' + location.locationName}
                                 </span>
                               )}
