@@ -622,13 +622,13 @@ async function getTikTokVideoInfo(url: string): Promise<{
   console.log('All APIs failed, using URL-based fallback for:', url);
 
   // Extract username from URL if possible
-  const usernameMatch = url.match(/@([^/]+)/);
-  const username = usernameMatch ? usernameMatch[1] : 'creator';
+  const fallbackUsernameMatch = url.match(/@([^/]+)/);
+  const fallbackUsername = fallbackUsernameMatch ? fallbackUsernameMatch[1] : 'creator';
 
   // Create a generic template
   return {
     title: 'TikTok Video Template',
-    author: username,
+    author: fallbackUsername,
     duration: 30, // Default duration
     thumbnail: '',
     videoUrl: '',
