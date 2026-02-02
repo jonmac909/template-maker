@@ -106,18 +106,19 @@ export default function Home() {
                   setError(null);
                 }}
                 placeholder="Paste TikTok or Reel URL..."
-                className="flex-1 bg-white rounded-[18px] px-4 py-3 text-sm placeholder:text-[var(--text-tertiary)] focus:outline-none"
-                disabled={loading}
+                className="flex-1 bg-white rounded-[18px] px-4 py-3 text-sm text-black placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/50"
               />
               <button
                 onClick={handleExtract}
-                disabled={loading || !url.trim()}
-                className="w-12 h-12 flex items-center justify-center rounded-[18px] bg-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                disabled={loading}
+                className={`w-12 h-12 flex items-center justify-center rounded-[18px] bg-white transition-all ${
+                  url.trim() ? 'hover:scale-105 active:scale-95' : 'opacity-50'
+                }`}
               >
                 {loading ? (
-                  <div className="w-5 h-5 border-2 border-[var(--accent-purple)] border-t-transparent rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 border-[#8B5CF6] border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <span className="text-[var(--accent-purple)] text-xl">→</span>
+                  <span className="text-[#8B5CF6] text-xl font-bold">→</span>
                 )}
               </button>
             </div>
