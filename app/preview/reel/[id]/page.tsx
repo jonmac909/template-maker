@@ -159,6 +159,59 @@ ${clips.map((clip, idx) => `            <gap name="Placeholder ${idx + 1} - ${cl
     URL.revokeObjectURL(url);
   };
 
+  const handleExportDaVinci = () => {
+    if (!template) return;
+
+    // DaVinci Resolve imports FCPXML well, so we use similar format
+    const fps = 30;
+
+    let currentFrame = 0;
+    const clips: Array<{ name: string; startFrame: number; durationFrames: number }> = [];
+
+    template.locations.forEach((loc) => {
+      loc.scenes.forEach((scene) => {
+        const durationFrames = Math.round(scene.duration * fps);
+        clips.push({
+          name: loc.locationName,
+          startFrame: currentFrame,
+          durationFrames,
+        });
+        currentFrame += durationFrames;
+      });
+    });
+
+    // Generate FCPXML (DaVinci Resolve compatible)
+    const fcpxml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.9">
+  <resources>
+    <format id="r1" name="FFVideoFormat1080p30" frameDuration="1/30s" width="1080" height="1920"/>
+  </resources>
+  <library>
+    <event name="Template Import">
+      <project name="${template.videoInfo?.title || 'Untitled Template'}">
+        <sequence format="r1" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
+          <spine>
+${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.durationFrames / fps).toFixed(1))}s)" offset="${clip.startFrame}/30s" duration="${clip.durationFrames}/30s" start="0s"/>`).join('\n')}
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>`;
+
+    // Download as XML file for DaVinci
+    const blob = new Blob([fcpxml], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `template-${params.id}-davinci.xml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownloadToPhone = () => {
     alert('Merging videos and downloading to your phone library...');
     // In production: merge all video clips, add text overlays, and trigger download
@@ -281,18 +334,18 @@ ${clips.map((clip, idx) => `            <gap name="Placeholder ${idx + 1} - ${cl
         {/* Export Buttons - Side by Side */}
         <div className="flex gap-2">
           <button
-            onClick={handleExportCapCut}
-            className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-xl bg-[#2D2640]"
-          >
-            <Download className="w-4 h-4 text-white/80" />
-            <span className="text-sm font-medium text-white/80">CapCut</span>
-          </button>
-          <button
             onClick={handleExportFinalCut}
             className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-xl bg-[#2D2640]"
           >
             <FileVideo className="w-4 h-4 text-white/80" />
-            <span className="text-sm font-medium text-white/80">Final Cut</span>
+            <span className="text-xs font-medium text-white/80">Final Cut</span>
+          </button>
+          <button
+            onClick={handleExportDaVinci}
+            className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-xl bg-[#2D2640]"
+          >
+            <FileVideo className="w-4 h-4 text-white/80" />
+            <span className="text-xs font-medium text-white/80">DaVinci</span>
           </button>
         </div>
 
