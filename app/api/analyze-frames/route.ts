@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Use OpenRouter as gateway to Claude
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.OAUTH_TOKEN;
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 interface FrameData {
   timestamp: number;
@@ -221,20 +220,52 @@ Respond with ONLY this JSON:
 
     messageContent.push({ type: 'text', text: prompt });
 
-    // Call Claude Vision API
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: messageContent }],
+    // Call Claude Vision API via OpenRouter gateway
+    console.log('Calling OpenRouter API with Claude model...');
+
+    // Convert message content to OpenRouter format
+    const openRouterContent = messageContent.map(item => {
+      if (item.type === 'text') {
+        return { type: 'text', text: item.text };
+      } else if (item.type === 'image') {
+        return {
+          type: 'image_url',
+          image_url: {
+            url: `data:${item.source.media_type};base64,${item.source.data}`
+          }
+        };
+      }
+      return item;
     });
 
-    // Extract JSON from response
-    const responseText = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-      .map((block) => block.text)
-      .join('\n');
+    const openRouterResponse = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://template-maker-one.vercel.app',
+        'X-Title': 'Template Maker'
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-sonnet-4',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: openRouterContent
+        }]
+      })
+    });
 
-    console.log('Claude response:', responseText.substring(0, 500));
+    if (!openRouterResponse.ok) {
+      const errorData = await openRouterResponse.json().catch(() => ({}));
+      console.error('OpenRouter API error:', openRouterResponse.status, errorData);
+      throw new Error(`OpenRouter API error: ${openRouterResponse.status} - ${errorData.error?.message || 'Unknown error'}`);
+    }
+
+    const openRouterData = await openRouterResponse.json();
+    const responseText = openRouterData.choices?.[0]?.message?.content || '';
+
+    console.log('Claude response via OpenRouter:', responseText.substring(0, 500));
 
     // Parse JSON from response
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);

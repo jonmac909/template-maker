@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Use OpenRouter as gateway to Claude
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.OAUTH_TOKEN;
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 interface TextStyle {
   fontFamily: string;
@@ -883,21 +882,50 @@ Create ${expectedCount} locations plus Intro and Outro.`;
       });
     }
 
-    console.log('Sending request to Claude API...');
+    console.log('Sending request to Claude API via OpenRouter...');
 
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: messageContent,
-        },
-      ],
+    // Convert message content to OpenRouter format
+    const openRouterContent = messageContent.map(item => {
+      if (item.type === 'text') {
+        return { type: 'text', text: item.text };
+      } else if (item.type === 'image') {
+        return {
+          type: 'image_url',
+          image_url: {
+            url: `data:${item.source.media_type};base64,${item.source.data}`
+          }
+        };
+      }
+      return item;
     });
 
-    console.log('Claude response received, content type:', message.content[0]?.type);
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    const openRouterResponse = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://template-maker-one.vercel.app',
+        'X-Title': 'Template Maker'
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-sonnet-4',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: openRouterContent
+        }]
+      })
+    });
+
+    if (!openRouterResponse.ok) {
+      const errorData = await openRouterResponse.json().catch(() => ({}));
+      console.error('OpenRouter API error:', openRouterResponse.status, errorData);
+      throw new Error(`OpenRouter API error: ${openRouterResponse.status}`);
+    }
+
+    const openRouterData = await openRouterResponse.json();
+    console.log('Claude response received via OpenRouter');
+    const responseText = openRouterData.choices?.[0]?.message?.content || '';
     console.log('Claude response text (first 1000 chars):', responseText.substring(0, 1000));
 
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
