@@ -63,6 +63,21 @@ interface Template {
 
 const LOCATION_COLORS = ['#8B5CF6', '#14B8A6', '#F472B6', '#FCD34D', '#E879F9', '#A78BFA', '#22D3EE'];
 
+// Map extracted font style to actual font family
+const mapFontStyleToFamily = (style?: string): string => {
+  switch (style) {
+    case 'script':
+      return 'Dancing Script';
+    case 'serif':
+      return 'Playfair Display';
+    case 'display':
+      return 'Montserrat';
+    case 'sans-serif':
+    default:
+      return 'Poppins';
+  }
+};
+
 export default function TemplateBreakdown() {
   const params = useParams();
   const router = useRouter();
@@ -237,18 +252,45 @@ export default function TemplateBreakdown() {
 
       // Update template with deep analysis results
       if (result.analysis) {
+        // Create text styles from extracted fonts
+        const titleStyle = result.analysis.extractedFonts?.titleFont ? {
+          fontFamily: mapFontStyleToFamily(result.analysis.extractedFonts.titleFont.style),
+          fontSize: 24,
+          fontWeight: result.analysis.extractedFonts.titleFont.weight === 'bold' ? '700' : '600',
+          color: '#FFFFFF',
+          hasEmoji: false,
+          position: 'center' as const,
+          alignment: 'center' as const,
+        } : undefined;
+
+        const locationStyle = result.analysis.extractedFonts?.locationFont ? {
+          fontFamily: mapFontStyleToFamily(result.analysis.extractedFonts.locationFont.style),
+          fontSize: 22,
+          fontWeight: result.analysis.extractedFonts.locationFont.weight === 'bold' ? '700' : '600',
+          color: '#FFFFFF',
+          hasEmoji: true,
+          emoji: '📍',
+          emojiPosition: 'before' as const,
+          position: 'bottom' as const,
+          alignment: 'left' as const,
+        } : undefined;
+
         const updatedLocations = template.locations?.map((loc, idx) => {
           const analysisLoc = result.analysis.locations?.[idx];
-          if (analysisLoc && loc.locationId === 0) {
-            // Update intro with extracted hook text
+
+          if (loc.locationId === 0) {
+            // Update intro with extracted hook text and title style
             return {
               ...loc,
               scenes: loc.scenes.map(scene => ({
                 ...scene,
                 textOverlay: result.analysis.extractedText?.hookText || scene.textOverlay,
+                textStyle: titleStyle || scene.textStyle,
               })),
             };
           }
+
+          // Update location scenes with extracted location style
           if (analysisLoc && analysisLoc.textOverlay) {
             return {
               ...loc,
@@ -256,10 +298,19 @@ export default function TemplateBreakdown() {
               scenes: loc.scenes.map(scene => ({
                 ...scene,
                 textOverlay: analysisLoc.textOverlay || scene.textOverlay,
+                textStyle: locationStyle || scene.textStyle,
               })),
             };
           }
-          return loc;
+
+          // Apply location style even without specific overlay text
+          return {
+            ...loc,
+            scenes: loc.scenes.map(scene => ({
+              ...scene,
+              textStyle: locationStyle || scene.textStyle,
+            })),
+          };
         });
 
         const updatedTemplate = {

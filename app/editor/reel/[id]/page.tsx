@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Sparkles, Check, Video, Clock, ChevronDown, ChevronUp, Pencil, X, Type, Save, Plus } from 'lucide-react';
-import { getFontNames, addFontsToLibrary, initializeFontLibrary, trackFontUsage, addCustomFont } from '../../../lib/fontLibrary';
+import { getFontNames, addFontsToLibrary, initializeFontLibrary, trackFontUsage, addCustomFont, loadGoogleFonts } from '../../../lib/fontLibrary';
 
 interface TextStyle {
   fontFamily: string;
@@ -49,6 +49,19 @@ interface DetectedFont {
   source: string;
 }
 
+interface ExtractedFonts {
+  titleFont?: {
+    style: 'script' | 'serif' | 'sans-serif' | 'display';
+    weight: string;
+    description: string;
+  };
+  locationFont?: {
+    style: 'script' | 'serif' | 'sans-serif' | 'display';
+    weight: string;
+    description: string;
+  };
+}
+
 interface Template {
   id: string;
   type: 'reel';
@@ -62,6 +75,7 @@ interface Template {
   };
   locations: LocationGroup[];
   detectedFonts?: DetectedFont[];
+  extractedFonts?: ExtractedFonts;
   detectedScenes?: Array<{
     id: number;
     startTime: number;
@@ -73,6 +87,42 @@ interface Template {
 }
 
 const LOCATION_COLORS = ['#8B5CF6', '#14B8A6', '#F472B6', '#FCD34D', '#E879F9', '#A78BFA', '#22D3EE'];
+
+// Map extracted font style to actual font family
+const mapFontStyleToFamily = (style?: string): string => {
+  switch (style) {
+    case 'script':
+      return 'Dancing Script';
+    case 'serif':
+      return 'Playfair Display';
+    case 'display':
+      return 'Montserrat';
+    case 'sans-serif':
+    default:
+      return 'Poppins';
+  }
+};
+
+// Create TextStyle from extracted font info
+const createStyleFromExtractedFont = (
+  extractedFont?: { style: string; weight: string; description: string },
+  isTitle: boolean = false
+): TextStyle => {
+  const fontFamily = mapFontStyleToFamily(extractedFont?.style);
+  const fontWeight = extractedFont?.weight === 'bold' ? '700' : '600';
+
+  return {
+    fontFamily,
+    fontSize: isTitle ? 24 : 22,
+    fontWeight,
+    color: '#FFFFFF',
+    hasEmoji: !isTitle,
+    emoji: '📍',
+    emojiPosition: 'before',
+    position: isTitle ? 'center' : 'bottom',
+    alignment: isTitle ? 'center' : 'left',
+  };
+};
 
 const DEFAULT_TEXT_STYLE: TextStyle = {
   fontFamily: 'Poppins',
@@ -105,6 +155,8 @@ export default function ReelEditor() {
   const [customFontName, setCustomFontName] = useState('');
   const [editingTitle, setEditingTitle] = useState(false);
   const [videoTitle, setVideoTitle] = useState('');
+  const [titleTextStyle, setTitleTextStyle] = useState<TextStyle>(DEFAULT_TEXT_STYLE);
+  const [locationTextStyle, setLocationTextStyle] = useState<TextStyle>(DEFAULT_TEXT_STYLE);
 
   useEffect(() => {
     // Initialize font library
@@ -150,17 +202,76 @@ export default function ReelEditor() {
     // Set video title from template
     setVideoTitle(data.videoInfo?.title || 'Video Template');
 
+    // Create extracted font styles
+    let titleStyle = DEFAULT_TEXT_STYLE;
+    let locStyle = DEFAULT_TEXT_STYLE;
+
+    // Set extracted font styles if available
+    if (data.extractedFonts) {
+      titleStyle = createStyleFromExtractedFont(data.extractedFonts.titleFont, true);
+      locStyle = createStyleFromExtractedFont(data.extractedFonts.locationFont, false);
+      setTitleTextStyle(titleStyle);
+      setLocationTextStyle(locStyle);
+
+      // Add extracted fonts to library for use in font picker
+      const fontsToAdd: Array<{
+        name: string;
+        category: 'sans-serif' | 'serif' | 'display' | 'handwriting' | 'monospace';
+        weights: string[];
+        suggestedFor: string;
+        source: string;
+      }> = [];
+
+      if (data.extractedFonts.titleFont) {
+        const titleFontName = mapFontStyleToFamily(data.extractedFonts.titleFont.style);
+        fontsToAdd.push({
+          name: titleFontName,
+          category: data.extractedFonts.titleFont.style === 'script' ? 'handwriting' : 'sans-serif',
+          weights: ['400', '600', '700'],
+          suggestedFor: 'titles, hooks',
+          source: 'extracted',
+        });
+      }
+
+      if (data.extractedFonts.locationFont) {
+        const locFontName = mapFontStyleToFamily(data.extractedFonts.locationFont.style);
+        fontsToAdd.push({
+          name: locFontName,
+          category: data.extractedFonts.locationFont.style === 'script' ? 'handwriting' : 'sans-serif',
+          weights: ['400', '600', '700'],
+          suggestedFor: 'locations',
+          source: 'extracted',
+        });
+      }
+
+      if (fontsToAdd.length > 0) {
+        addFontsToLibrary(fontsToAdd);
+        setFontLibrary(getFontNames());
+        // Load the extracted fonts from Google Fonts
+        loadGoogleFonts(fontsToAdd.map(f => f.name));
+      }
+    }
+
     if (data.locations) {
-      setLocations(data.locations.map((loc, idx) => ({
-        ...loc,
-        expanded: idx === 0,
-        scenes: loc.scenes.map(scene => ({
-          ...scene,
-          filled: false,
-          userVideo: null,
-          userThumbnail: undefined
-        }))
-      })));
+      setLocations(data.locations.map((loc, idx) => {
+        const isIntro = loc.locationId === 0;
+        return {
+          ...loc,
+          expanded: idx === 0,
+          scenes: loc.scenes.map(scene => {
+            // Preserve existing textOverlay (including extracted hook text for intro)
+            // Apply extracted style if no style exists
+            const sceneStyle = scene.textStyle || (isIntro ? titleStyle : locStyle);
+            return {
+              ...scene,
+              textStyle: sceneStyle,
+              filled: false,
+              userVideo: null,
+              userThumbnail: undefined
+            };
+          })
+        };
+      }));
     }
   };
 
@@ -250,7 +361,10 @@ export default function ReelEditor() {
   const startEditingScene = (locationId: number, sceneId: number, currentText: string | null, currentStyle?: TextStyle) => {
     setEditingScene({ locationId, sceneId });
     setEditText(currentText || '');
-    setEditStyle(currentStyle || DEFAULT_TEXT_STYLE);
+    // Use extracted style based on whether this is intro or location
+    const isIntro = locationId === 0;
+    const defaultStyle = isIntro ? titleTextStyle : locationTextStyle;
+    setEditStyle(currentStyle || defaultStyle);
     setShowStyleEditor(false);
   };
 
@@ -772,7 +886,9 @@ export default function ReelEditor() {
                             </div>
 
                             <p className="text-xs text-white/70 mb-2 line-clamp-2">
-                              {scene.description}
+                              {location.locationId === 0 && scene.textOverlay
+                                ? 'Hook shot with extracted intro text'
+                                : scene.description}
                             </p>
 
                             {/* Editable Text Overlay */}

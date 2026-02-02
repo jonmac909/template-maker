@@ -41,6 +41,19 @@ interface TimelineClip {
   muted: boolean;
 }
 
+interface ExtractedFonts {
+  titleFont?: {
+    style: 'script' | 'serif' | 'sans-serif' | 'display';
+    weight: string;
+    description: string;
+  };
+  locationFont?: {
+    style: 'script' | 'serif' | 'sans-serif' | 'display';
+    weight: string;
+    description: string;
+  };
+}
+
 interface Template {
   id: string;
   type: 'reel';
@@ -69,6 +82,7 @@ interface Template {
     }>;
     totalDuration: number;
   }>;
+  extractedFonts?: ExtractedFonts;
 }
 
 const LOCATION_COLORS = ['#8B5CF6', '#14B8A6', '#F472B6', '#FCD34D', '#E879F9', '#A78BFA', '#22D3EE'];
@@ -137,16 +151,26 @@ export default function TimelineEditor() {
       const isIntro = locIdx === 0 && location.locationName.toLowerCase().includes('intro');
 
       location.scenes.forEach((scene, sceneIdx) => {
-        // For non-intro locations, the text overlay should be the LOCATION NAME
-        // NOT the scene.textOverlay which might contain the video title
+        // Use the scene's text overlay and style (which should have extracted data)
         let displayTextOverlay: string | undefined;
         let displayTextStyle = scene.textStyle;
 
         if (isIntro) {
-          // Intro scene - no text overlay (user adds their video)
-          displayTextOverlay = undefined;
+          // Intro scene - use extracted hook text if available
+          displayTextOverlay = scene.textOverlay || undefined;
+          // Use extracted title style or default
+          displayTextStyle = scene.textStyle || {
+            fontFamily: 'Poppins',
+            fontSize: 24,
+            fontWeight: '700',
+            color: '#FFFFFF',
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            hasEmoji: false,
+            position: 'center',
+            alignment: 'center',
+          };
         } else {
-          // Location scenes - show location name like "📍 The Blue Temple"
+          // Location scenes - show location name with extracted style
           displayTextOverlay = location.locationName;
           displayTextStyle = scene.textStyle || {
             fontFamily: 'Poppins',
