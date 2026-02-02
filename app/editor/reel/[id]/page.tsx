@@ -198,9 +198,43 @@ export default function ReelEditor() {
     }
   };
 
+  // Extract hook text from video title (e.g., "10 Magical Places in Chiang Mai..." from full title)
+  const extractHookFromTitle = (title: string): string | null => {
+    if (!title) return null;
+
+    // Remove trailing location list items (e.g., "1. The Blue Temple 2. The White Temple...")
+    const cleanTitle = title
+      .replace(/\s*\d+\.\s*[^0-9]+(?=\s*\d+\.|$)/g, '') // Remove numbered items
+      .replace(/\s*[\u{1F300}-\u{1F9FF}]/gu, '') // Remove emojis at end
+      .trim();
+
+    // If title starts with a number + text pattern, that's likely the hook
+    const hookMatch = cleanTitle.match(/^(\d+\s+(?:Best|Top|Must|Magical|Dreamiest|Amazing|Beautiful|Hidden|Secret|Ultimate|Perfect|Stunning|Incredible)[^.!?]*)/i);
+    if (hookMatch) {
+      return hookMatch[1].trim();
+    }
+
+    // Otherwise use the first sentence or phrase (up to ~60 chars)
+    const firstPart = cleanTitle.split(/[.!?]/)[0].trim();
+    if (firstPart.length > 10 && firstPart.length <= 80) {
+      return firstPart;
+    }
+
+    // Truncate if too long
+    if (cleanTitle.length > 60) {
+      return cleanTitle.slice(0, 60).trim() + '...';
+    }
+
+    return cleanTitle || null;
+  };
+
   const initializeLocations = (data: Template) => {
     // Set video title from template
-    setVideoTitle(data.videoInfo?.title || 'Video Template');
+    const fullTitle = data.videoInfo?.title || 'Video Template';
+    setVideoTitle(fullTitle);
+
+    // Extract hook text from title as fallback for intro
+    const hookFromTitle = extractHookFromTitle(fullTitle);
 
     // Create extracted font styles
     let titleStyle = DEFAULT_TEXT_STYLE;
@@ -259,11 +293,18 @@ export default function ReelEditor() {
           ...loc,
           expanded: idx === 0,
           scenes: loc.scenes.map(scene => {
-            // Preserve existing textOverlay (including extracted hook text for intro)
             // Apply extracted style if no style exists
             const sceneStyle = scene.textStyle || (isIntro ? titleStyle : locStyle);
+
+            // For intro scenes: use existing text, or fallback to hook extracted from title
+            let textOverlay = scene.textOverlay;
+            if (isIntro && !textOverlay && hookFromTitle) {
+              textOverlay = hookFromTitle;
+            }
+
             return {
               ...scene,
+              textOverlay,
               textStyle: sceneStyle,
               filled: false,
               userVideo: null,
