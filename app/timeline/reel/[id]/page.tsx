@@ -236,69 +236,69 @@ export default function TimelineEditor() {
   const timelineWidth = Math.max(totalDuration * 35, 300); // pixels per second
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="h-screen bg-black flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-center px-4 py-4 relative">
+      <div className="flex items-center justify-center px-4 py-3 relative flex-shrink-0">
         <button
           onClick={() => router.back()}
-          className="absolute left-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/10"
+          className="absolute left-4 w-9 h-9 flex items-center justify-center rounded-full bg-white/10"
         >
-          <ArrowLeft className="w-5 h-5 text-white" />
+          <ArrowLeft className="w-4 h-4 text-white" />
         </button>
-        <h1 className="text-white font-semibold text-base">Edit Video</h1>
+        <h1 className="text-white font-semibold text-sm">Edit Video</h1>
       </div>
 
-      {/* Large Video Preview */}
-      <div className="flex-1 flex justify-center items-center px-6 py-4">
-        <div className="relative w-full max-w-[280px] aspect-[9/16] bg-[#1A1A2E] rounded-2xl overflow-hidden">
+      {/* Video Preview - Constrained height */}
+      <div className="flex-1 flex justify-center items-center px-8 py-2 min-h-0">
+        <div className="relative h-full max-h-[45vh] aspect-[9/16] bg-[#1A1A2E] rounded-2xl overflow-hidden">
           {/* Play Button */}
           <button
             onClick={togglePlayback}
             className="absolute inset-0 flex items-center justify-center z-10"
           >
-            <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+            <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
               {isPlaying ? (
-                <Pause className="w-7 h-7 text-white/70" />
+                <Pause className="w-6 h-6 text-white/70" />
               ) : (
-                <Play className="w-7 h-7 text-white/70 ml-1" />
+                <Play className="w-6 h-6 text-white/70 ml-0.5" />
               )}
             </div>
           </button>
 
           {/* Time Display - Bottom Left */}
-          <div className="absolute bottom-4 left-4 px-2.5 py-1 bg-black/60 rounded-lg">
-            <span className="text-white text-sm font-medium">{formatTime(currentTime)}</span>
+          <div className="absolute bottom-3 left-3 px-2 py-0.5 bg-black/60 rounded-md">
+            <span className="text-white text-xs font-medium">{formatTime(currentTime)}</span>
           </div>
         </div>
       </div>
 
       {/* Toolbar - Trim, Text, Audio */}
-      <div className="flex items-center justify-center gap-12 py-4 border-t border-white/10">
+      <div className="flex items-center justify-center gap-10 py-3 border-t border-white/10 flex-shrink-0">
         <button
           onClick={() => setActiveTab('trim')}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'trim' ? 'text-white' : 'text-white/40'}`}
+          className={`flex flex-col items-center gap-0.5 ${activeTab === 'trim' ? 'text-white' : 'text-white/40'}`}
         >
-          <Scissors className="w-6 h-6" />
-          <span className="text-xs">Trim</span>
+          <Scissors className="w-5 h-5" />
+          <span className="text-[10px]">Trim</span>
         </button>
         <button
           onClick={() => setActiveTab('text')}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'text' ? 'text-white' : 'text-white/40'}`}
+          className={`flex flex-col items-center gap-0.5 ${activeTab === 'text' ? 'text-white' : 'text-white/40'}`}
         >
-          <Type className="w-6 h-6" />
-          <span className="text-xs">Text</span>
+          <Type className="w-5 h-5" />
+          <span className="text-[10px]">Text</span>
         </button>
         <button
           onClick={() => setActiveTab('audio')}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'audio' ? 'text-white' : 'text-white/40'}`}
+          className={`flex flex-col items-center gap-0.5 ${activeTab === 'audio' ? 'text-white' : 'text-white/40'}`}
         >
-          <Music className="w-6 h-6" />
-          <span className="text-xs">Audio</span>
+          <Music className="w-5 h-5" />
+          <span className="text-[10px]">Audio</span>
         </button>
       </div>
 
       {/* Timeline Section */}
-      <div className="bg-[#0D0D1A] px-4 py-4">
+      <div className="bg-[#0D0D1A] px-4 py-3 flex-shrink-0">
         {/* Scrollable Timeline */}
         <div
           ref={timelineScrollRef}
@@ -307,11 +307,11 @@ export default function TimelineEditor() {
         >
           <div style={{ width: timelineWidth, minWidth: '100%' }}>
             {/* Time Markers */}
-            <div className="flex mb-3">
+            <div className="flex mb-2">
               {timeMarkers.map((t) => (
                 <div
                   key={t}
-                  className="text-white/40 text-xs"
+                  className="text-white/40 text-[10px]"
                   style={{ width: `${100 / timeMarkers.length}%` }}
                 >
                   {formatTime(t)}
@@ -320,7 +320,7 @@ export default function TimelineEditor() {
             </div>
 
             {/* Scene Track - Colored Cards */}
-            <div className="flex gap-1 mb-3">
+            <div className="flex gap-1 mb-2">
               {clips.map((clip, idx) => (
                 <button
                   key={clip.id}
@@ -328,35 +328,35 @@ export default function TimelineEditor() {
                     setSelectedClip(clip.id);
                     setCurrentTime(clip.startTime);
                   }}
-                  className={`h-14 rounded-xl transition-all ${
+                  className={`h-12 rounded-xl transition-all ${
                     selectedClip === clip.id ? 'ring-2 ring-white' : ''
                   }`}
                   style={{
                     backgroundColor: clip.color,
                     flex: clip.duration,
-                    minWidth: 50,
+                    minWidth: 45,
                   }}
                 />
               ))}
             </div>
 
             {/* Audio Track */}
-            <div className="flex items-center gap-2 mb-3">
-              <Music className="w-4 h-4 text-white/30 flex-shrink-0" />
-              <div className="flex-1 h-8 bg-[#1A1A2E] rounded-lg" />
+            <div className="flex items-center gap-2 mb-2">
+              <Music className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
+              <div className="flex-1 h-6 bg-[#1A1A2E] rounded-lg" />
             </div>
 
             {/* Text Track */}
             <div className="flex items-center gap-2">
-              <Type className="w-4 h-4 text-white/30 flex-shrink-0" />
+              <Type className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
               <div className="flex-1 flex gap-1">
                 {textOverlays.slice(0, 3).map((overlay, idx) => (
                   <div
                     key={overlay.id}
-                    className="h-8 bg-[#8B5CF6] rounded-lg"
+                    className="h-6 bg-[#8B5CF6] rounded-lg"
                     style={{
                       flex: overlay.endTime - overlay.startTime,
-                      minWidth: 40,
+                      minWidth: 35,
                     }}
                   />
                 ))}
@@ -369,12 +369,12 @@ export default function TimelineEditor() {
       </div>
 
       {/* Preview Button */}
-      <div className="px-6 py-6">
+      <div className="px-5 py-4 flex-shrink-0">
         <button
           onClick={handlePreview}
-          className="w-full h-14 flex items-center justify-center gap-2 rounded-full bg-[#8B5CF6] text-white font-semibold text-base"
+          className="w-full h-12 flex items-center justify-center gap-2 rounded-full bg-[#8B5CF6] text-white font-semibold text-sm"
         >
-          <Eye className="w-5 h-5" />
+          <Eye className="w-4 h-4" />
           Preview
         </button>
       </div>
