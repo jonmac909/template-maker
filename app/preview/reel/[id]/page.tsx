@@ -80,7 +80,6 @@ export default function ReelPreview() {
 
   const handleExport = () => {
     alert('Opening export options for CapCut...');
-    // In production, this would generate a CapCut-compatible project file
   };
 
   const handleSaveToLibrary = () => {
@@ -104,10 +103,10 @@ export default function ReelPreview() {
 
   if (loading || !template) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-[#8B5CF6] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading preview...</p>
+          <div className="w-12 h-12 border-4 border-[#8B5CF6] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-gray-400 text-sm">Loading preview...</p>
         </div>
       </div>
     );
@@ -118,23 +117,23 @@ export default function ReelPreview() {
   const locationCount = locations.filter(l => l.locationId > 0 && l.locationName !== 'Outro').length;
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="h-screen bg-black flex flex-col overflow-hidden">
       {/* Top Bar */}
-      <div className="flex items-center justify-between h-14 px-4 pt-4">
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0">
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-2"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10"
         >
-          <ArrowLeft className="w-6 h-6 text-white" />
+          <ArrowLeft className="w-4 h-4 text-white" />
         </button>
-        <h2 className="text-lg font-semibold text-white">Preview</h2>
-        <div className="w-[60px] h-6" />
+        <h2 className="text-sm font-semibold text-white">Preview</h2>
+        <div className="w-9" />
       </div>
 
-      {/* Video Preview */}
-      <div className="flex items-center justify-center h-[420px] px-4">
+      {/* Video Preview - Constrained height */}
+      <div className="flex items-center justify-center px-6 py-2 flex-shrink-0">
         <div
-          className="w-[200px] h-[356px] rounded-xl relative overflow-hidden"
+          className="w-[160px] h-[285px] rounded-xl relative overflow-hidden"
           style={{
             backgroundColor: '#1A1A2E',
             backgroundImage: template.videoInfo?.thumbnail ? `url(${template.videoInfo.thumbnail})` : undefined,
@@ -144,104 +143,104 @@ export default function ReelPreview() {
         >
           {/* Play Button Overlay */}
           <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-            <div className="w-16 h-16 rounded-full bg-white/30 flex items-center justify-center backdrop-blur-sm">
-              <div className="w-0 h-0 border-t-[12px] border-t-transparent border-l-[20px] border-l-white border-b-[12px] border-b-transparent ml-1" />
+            <div className="w-12 h-12 rounded-full bg-white/30 flex items-center justify-center backdrop-blur-sm">
+              <div className="w-0 h-0 border-t-[10px] border-t-transparent border-l-[16px] border-l-white border-b-[10px] border-b-transparent ml-1" />
             </div>
           </div>
 
           {/* Duration Badge */}
-          <div className="absolute bottom-3 left-3 px-2.5 py-1.5 rounded-xl bg-black/80">
-            <span className="text-white text-[11px] font-semibold">{formatDuration(template.totalDuration)}</span>
+          <div className="absolute bottom-2 left-2 px-2 py-1 rounded-lg bg-black/80">
+            <span className="text-white text-[10px] font-semibold">{formatDuration(template.totalDuration)}</span>
           </div>
 
           {/* Scenes Badge */}
-          <div className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-xl bg-[#8B5CF6]">
-            <span className="text-white text-[11px] font-semibold">{totalScenes} scenes</span>
+          <div className="absolute bottom-2 right-2 px-2 py-1 rounded-lg bg-[#8B5CF6]">
+            <span className="text-white text-[10px] font-semibold">{totalScenes} scenes</span>
           </div>
         </div>
       </div>
 
       {/* Status Section */}
-      <div className="flex flex-col items-center gap-4 px-4 py-4">
-        <div className="flex items-center gap-2 px-4 py-2 rounded-[20px] bg-[#14B8A6]">
-          <CircleCheck className="w-[18px] h-[18px] text-white" />
-          <span className="text-sm font-semibold text-white">Video Ready!</span>
+      <div className="flex flex-col items-center gap-2 px-4 py-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#14B8A6]">
+          <CircleCheck className="w-4 h-4 text-white" />
+          <span className="text-xs font-semibold text-white">Video Ready!</span>
         </div>
-        <p className="text-sm text-[#888888] text-center">
-          Your template has been assembled with all<br />your media and captions
+        <p className="text-xs text-[#888888] text-center">
+          Your template has been assembled
         </p>
       </div>
 
       {/* Stats Row */}
-      <div className="flex items-center justify-center gap-6 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Clock className="w-4 h-4 text-[#8B5CF6]" />
-          <span className="text-sm text-white/70">{formatDuration(template.totalDuration)}</span>
+      <div className="flex items-center justify-center gap-4 px-4 py-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5 text-[#8B5CF6]" />
+          <span className="text-xs text-white/70">{formatDuration(template.totalDuration)}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <MapPin className="w-4 h-4 text-[#14B8A6]" />
-          <span className="text-sm text-white/70">{locationCount} locations</span>
+        <div className="flex items-center gap-1.5">
+          <MapPin className="w-3.5 h-3.5 text-[#14B8A6]" />
+          <span className="text-xs text-white/70">{locationCount} locations</span>
         </div>
-        <div className="flex items-center gap-2">
-          <Film className="w-4 h-4 text-[#F472B6]" />
-          <span className="text-sm text-white/70">{totalScenes} scenes</span>
+        <div className="flex items-center gap-1.5">
+          <Film className="w-3.5 h-3.5 text-[#F472B6]" />
+          <span className="text-xs text-white/70">{totalScenes} scenes</span>
         </div>
       </div>
 
       {/* Timeline Preview */}
-      <div className="px-4 py-3">
-        <div className="flex gap-1.5 overflow-x-auto pb-2">
+      <div className="px-4 py-2 flex-shrink-0">
+        <div className="flex gap-1 overflow-x-auto pb-1">
           {locations.map((location, locIdx) => (
             <div
               key={location.locationId}
-              className="flex-shrink-0 px-3 py-2 rounded-lg"
+              className="flex-shrink-0 px-2 py-1.5 rounded-lg"
               style={{ backgroundColor: LOCATION_COLORS[locIdx % LOCATION_COLORS.length] + '30' }}
             >
-              <p className="text-[10px] font-medium text-white/70">{location.locationName}</p>
-              <p className="text-[10px] text-white/40">{location.totalDuration}s</p>
+              <p className="text-[9px] font-medium text-white/70">{location.locationName}</p>
+              <p className="text-[9px] text-white/40">{location.totalDuration}s</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Spacer */}
-      <div className="flex-1" />
+      <div className="flex-1 min-h-0" />
 
       {/* Bottom Section */}
-      <div className="flex flex-col gap-3 px-4 pt-4 pb-8">
+      <div className="flex flex-col gap-2 px-4 pt-2 pb-5 flex-shrink-0">
         {/* Export Button */}
         <button
           onClick={handleExport}
-          className="w-full h-[52px] flex items-center justify-center gap-2 rounded-xl bg-[#8B5CF6]"
+          className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#8B5CF6]"
         >
-          <Download className="w-5 h-5 text-white" />
-          <span className="text-base font-semibold text-white">Export to CapCut</span>
+          <Download className="w-4 h-4 text-white" />
+          <span className="text-sm font-semibold text-white">Export to CapCut</span>
         </button>
 
         {/* Save to Library Button */}
         <button
           onClick={handleSaveToLibrary}
-          className="w-full h-[52px] flex items-center justify-center gap-2 rounded-xl bg-[#1A1A2E]"
+          className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#1A1A2E]"
         >
-          <Save className="w-5 h-5 text-white" />
-          <span className="text-base font-medium text-white">Save to Library</span>
+          <Save className="w-4 h-4 text-white" />
+          <span className="text-sm font-medium text-white">Save to Library</span>
         </button>
 
         {/* Edit Buttons */}
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           <button
             onClick={handleEditTimeline}
-            className="flex-1 h-11 flex items-center justify-center gap-2"
+            className="flex-1 h-9 flex items-center justify-center gap-1.5"
           >
-            <Film className="w-[18px] h-[18px] text-[#888888]" />
-            <span className="text-sm text-[#888888]">Edit Timeline</span>
+            <Film className="w-4 h-4 text-[#888888]" />
+            <span className="text-xs text-[#888888]">Edit Timeline</span>
           </button>
           <button
             onClick={handleEditSlots}
-            className="flex-1 h-11 flex items-center justify-center gap-2"
+            className="flex-1 h-9 flex items-center justify-center gap-1.5"
           >
-            <Pencil className="w-[18px] h-[18px] text-[#888888]" />
-            <span className="text-sm text-[#888888]">Edit Slots</span>
+            <Pencil className="w-4 h-4 text-[#888888]" />
+            <span className="text-xs text-[#888888]">Edit Slots</span>
           </button>
         </div>
       </div>
