@@ -228,6 +228,154 @@ const TEXT_STYLES = {
   },
 };
 
+// Map font style descriptions to actual Google Fonts
+interface ExtractedFontStyle {
+  style: string;
+  weight: string;
+  description: string;
+}
+
+interface MappedFonts {
+  titleFont: string;
+  bodyFont: string;
+  accentFont: string;
+  titleWeight: string;
+  bodyWeight: string;
+}
+
+function mapExtractedFonts(
+  extractedFonts: { titleFont?: ExtractedFontStyle; bodyFont?: ExtractedFontStyle; accentFont?: ExtractedFontStyle },
+  visualStyle: string
+): MappedFonts {
+  // Font mapping based on style descriptions
+  const scriptFonts = ['Pacifico', 'Dancing Script', 'Great Vibes', 'Satisfy', 'Sacramento', 'Tangerine', 'Alex Brush'];
+  const serifFonts = ['Playfair Display', 'Lora', 'Merriweather', 'Cormorant Garamond', 'Libre Baskerville', 'Crimson Text'];
+  const displayFonts = ['Bebas Neue', 'Oswald', 'Anton', 'Abril Fatface', 'Righteous', 'Russo One'];
+  const sansFonts = ['Poppins', 'Montserrat', 'Inter', 'DM Sans', 'Space Grotesk', 'Outfit', 'Manrope'];
+  const handwritingFonts = ['Caveat', 'Kalam', 'Shadows Into Light', 'Patrick Hand', 'Indie Flower'];
+
+  // Helper to pick font based on style
+  const pickFont = (style?: ExtractedFontStyle, category?: string): string => {
+    if (!style) return 'Poppins';
+
+    const styleDesc = (style.style + ' ' + (style.description || '')).toLowerCase();
+
+    // Script/cursive fonts
+    if (styleDesc.includes('script') || styleDesc.includes('cursive') || styleDesc.includes('elegant') || styleDesc.includes('handwritten')) {
+      if (styleDesc.includes('elegant') || styleDesc.includes('formal')) {
+        return scriptFonts[Math.floor(Math.random() * 3)]; // First 3 are more elegant
+      }
+      return scriptFonts[Math.floor(Math.random() * scriptFonts.length)];
+    }
+
+    // Serif fonts
+    if (styleDesc.includes('serif') && !styleDesc.includes('sans')) {
+      return serifFonts[Math.floor(Math.random() * serifFonts.length)];
+    }
+
+    // Display/decorative fonts
+    if (styleDesc.includes('display') || styleDesc.includes('bold') || styleDesc.includes('impact')) {
+      return displayFonts[Math.floor(Math.random() * displayFonts.length)];
+    }
+
+    // Handwriting
+    if (styleDesc.includes('handwriting') || styleDesc.includes('casual')) {
+      return handwritingFonts[Math.floor(Math.random() * handwritingFonts.length)];
+    }
+
+    // Default to sans-serif
+    return sansFonts[Math.floor(Math.random() * sansFonts.length)];
+  };
+
+  // Map based on visual style if no fonts extracted
+  let defaultTitleFont = 'Montserrat';
+  let defaultBodyFont = 'Poppins';
+
+  switch (visualStyle.toLowerCase()) {
+    case 'elegant':
+      defaultTitleFont = 'Playfair Display';
+      defaultBodyFont = 'Lora';
+      break;
+    case 'bold':
+      defaultTitleFont = 'Bebas Neue';
+      defaultBodyFont = 'Oswald';
+      break;
+    case 'minimal':
+      defaultTitleFont = 'Space Grotesk';
+      defaultBodyFont = 'Inter';
+      break;
+    case 'playful':
+      defaultTitleFont = 'Pacifico';
+      defaultBodyFont = 'Caveat';
+      break;
+    case 'cinematic':
+      defaultTitleFont = 'Cormorant Garamond';
+      defaultBodyFont = 'Libre Baskerville';
+      break;
+    case 'vintage':
+      defaultTitleFont = 'Abril Fatface';
+      defaultBodyFont = 'Merriweather';
+      break;
+  }
+
+  return {
+    titleFont: extractedFonts.titleFont ? pickFont(extractedFonts.titleFont) : defaultTitleFont,
+    bodyFont: extractedFonts.bodyFont ? pickFont(extractedFonts.bodyFont) : defaultBodyFont,
+    accentFont: extractedFonts.accentFont ? pickFont(extractedFonts.accentFont) : defaultTitleFont,
+    titleWeight: extractedFonts.titleFont?.weight === 'bold' ? '700' : '600',
+    bodyWeight: extractedFonts.bodyFont?.weight === 'bold' ? '600' : '400',
+  };
+}
+
+function getTextStyleForSceneWithFonts(
+  locationId: number,
+  sceneIndex: number,
+  textOverlay: string | null,
+  fonts: MappedFonts
+): TextStyle {
+  if (!textOverlay) {
+    return {
+      ...TEXT_STYLES.locationLabel,
+      fontFamily: fonts.bodyFont,
+    };
+  }
+
+  // Intro/hook text - use title font
+  if (locationId === 0) {
+    return {
+      ...TEXT_STYLES.hook,
+      fontFamily: fonts.titleFont,
+      fontWeight: fonts.titleWeight,
+    };
+  }
+
+  // Outro/CTA
+  if (textOverlay.toLowerCase().includes('follow') || textOverlay.toLowerCase().includes('more')) {
+    return {
+      ...TEXT_STYLES.cta,
+      fontFamily: fonts.bodyFont,
+    };
+  }
+
+  // Numbered items (e.g., "1. Cafe Name") - use accent font
+  if (/^\d+\./.test(textOverlay)) {
+    return {
+      ...TEXT_STYLES.numbered,
+      fontFamily: fonts.accentFont,
+      fontWeight: fonts.bodyWeight,
+      hasEmoji: true,
+      emoji: '📍',
+      emojiPosition: 'before' as const,
+    };
+  }
+
+  // Default location label
+  return {
+    ...TEXT_STYLES.locationLabel,
+    fontFamily: fonts.bodyFont,
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { url, platform } = await request.json();
@@ -241,10 +389,13 @@ export async function POST(request: NextRequest) {
 
     const videoInfo = await getTikTokVideoInfo(url);
 
+    console.log('=== EXTRACTION START ===');
     console.log('Video info retrieved:', {
       title: videoInfo.title,
       author: videoInfo.author,
       duration: videoInfo.duration,
+      hasThumbnail: !!videoInfo.thumbnail,
+      thumbnailUrl: videoInfo.thumbnail?.substring(0, 80),
       hasVideoUrl: !!videoInfo.videoUrl,
     });
 
@@ -291,9 +442,11 @@ async function getTikTokVideoInfo(url: string): Promise<{
   duration: number;
   thumbnail: string;
   videoUrl: string;
+  allCovers?: string[];
 }> {
-  // Try TikWM API first
+  // Method 1: Try TikWM API first
   try {
+    console.log('Method 1: Trying TikWM API...');
     const apiUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
 
     const controller = new AbortController();
@@ -314,21 +467,115 @@ async function getTikTokVideoInfo(url: string): Promise<{
 
       if (data.code === 0 && data.data) {
         const videoData = data.data;
+        console.log('TikWM API success!');
+        console.log('Available images:', {
+          cover: !!videoData.cover,
+          origin_cover: !!videoData.origin_cover,
+          dynamic_cover: !!videoData.dynamic_cover,
+          ai_dynamic_cover: !!videoData.ai_dynamic_cover,
+        });
+
+        // Collect all available thumbnail/cover images for better analysis
+        const allCovers: string[] = [];
+        if (videoData.origin_cover) allCovers.push(videoData.origin_cover);
+        if (videoData.cover) allCovers.push(videoData.cover);
+        if (videoData.dynamic_cover) allCovers.push(videoData.dynamic_cover);
+        if (videoData.ai_dynamic_cover) allCovers.push(videoData.ai_dynamic_cover);
+
         return {
           title: videoData.title || 'TikTok Video',
           author: videoData.author?.nickname || videoData.author?.unique_id || 'Creator',
           duration: videoData.duration || 30,
-          thumbnail: videoData.cover || videoData.origin_cover || '',
+          thumbnail: videoData.origin_cover || videoData.cover || '', // Prefer origin_cover
           videoUrl: videoData.play || videoData.hdplay || '',
+          allCovers, // Pass all available covers for multi-frame analysis
         };
       }
     }
   } catch (error) {
-    console.log('TikWM API failed, using fallback:', error instanceof Error ? error.message : error);
+    console.log('TikWM API failed:', error instanceof Error ? error.message : error);
+  }
+
+  // Method 2: Try cobalt.tools API (yt-dlp wrapper)
+  try {
+    console.log('Method 2: Trying cobalt.tools API (yt-dlp based)...');
+    const cobaltResponse = await fetch('https://api.cobalt.tools/api/json', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url: url,
+        vQuality: '720',
+        filenamePattern: 'basic',
+        isNoTTWatermark: true,
+      }),
+    });
+
+    if (cobaltResponse.ok) {
+      const cobaltData = await cobaltResponse.json();
+      console.log('Cobalt response:', JSON.stringify(cobaltData).substring(0, 200));
+
+      if (cobaltData.status === 'stream' || cobaltData.status === 'redirect') {
+        // Cobalt gives us a direct video URL, but we need metadata
+        // We can try to get the thumbnail from the video URL
+        const videoUrl = cobaltData.url || '';
+
+        // Extract video ID from URL for potential thumbnail
+        const videoIdMatch = url.match(/video\/(\d+)/);
+        const videoId = videoIdMatch ? videoIdMatch[1] : '';
+
+        // Use username from URL
+        const usernameMatch = url.match(/@([^/]+)/);
+        const username = usernameMatch ? usernameMatch[1] : 'Creator';
+
+        console.log('Cobalt API success! Video URL obtained.');
+        return {
+          title: `Video by @${username}`,
+          author: username,
+          duration: 30,
+          thumbnail: '', // Cobalt doesn't provide thumbnail directly
+          videoUrl: videoUrl,
+        };
+      }
+    }
+  } catch (error) {
+    console.log('Cobalt API failed:', error instanceof Error ? error.message : error);
+  }
+
+  // Method 3: Try SSSTik API
+  try {
+    console.log('Method 3: Trying SSSTik API...');
+    const ssstikResponse = await fetch(`https://ssstik.io/abc?url=${encodeURIComponent(url)}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      },
+    });
+
+    if (ssstikResponse.ok) {
+      const html = await ssstikResponse.text();
+      // Try to extract video info from response
+      const titleMatch = html.match(/<p class="maintext">([^<]+)<\/p>/);
+      const authorMatch = html.match(/@(\w+)/);
+
+      if (titleMatch) {
+        console.log('SSSTik API success!');
+        return {
+          title: titleMatch[1] || 'TikTok Video',
+          author: authorMatch ? authorMatch[1] : 'Creator',
+          duration: 30,
+          thumbnail: '',
+          videoUrl: '',
+        };
+      }
+    }
+  } catch (error) {
+    console.log('SSSTik API failed:', error instanceof Error ? error.message : error);
   }
 
   // Fallback: Create a basic template from URL parsing
-  console.log('Using URL-based fallback for:', url);
+  console.log('All APIs failed, using URL-based fallback for:', url);
 
   // Extract username from URL if possible
   const usernameMatch = url.match(/@([^/]+)/);
@@ -344,62 +591,239 @@ async function getTikTokVideoInfo(url: string): Promise<{
   };
 }
 
+// Extract frames from video at specific timestamps
+async function extractVideoFrames(videoUrl: string, duration: number, numFrames: number = 8): Promise<string[]> {
+  // We can't do server-side video processing easily, but we can try to get
+  // TikTok's thumbnail variations which often show different scenes
+  const frames: string[] = [];
+
+  // TikTok CDN often has frame thumbnails at different timestamps
+  // Try to construct frame URLs based on the video URL pattern
+  if (videoUrl.includes('tiktokcdn.com')) {
+    // TikTok videos often have associated frame images
+    // The thumbnail URL pattern can sometimes be modified to get different frames
+    const interval = Math.floor(duration / numFrames);
+    for (let i = 0; i < numFrames; i++) {
+      // We'll use the video URL itself - Claude can analyze video if given as URL
+      // But for now, we'll rely on the thumbnail
+    }
+  }
+
+  return frames;
+}
+
 async function analyzeVideoWithClaude(
-  videoInfo: { title: string; author: string; duration: number; thumbnail: string; videoUrl: string },
+  videoInfo: { title: string; author: string; duration: number; thumbnail: string; videoUrl: string; allCovers?: string[] },
   originalUrl: string
 ): Promise<VideoAnalysis> {
   try {
-    const prompt = `You are a video template analyzer. Analyze this TikTok video and extract its structure for someone who wants to recreate a similar video with their own content.
+    // Extract destination from title for context
+    const destinationMatch = videoInfo.title.match(/in\s+([A-Z][a-zA-Z\s]+?)(?:\s*[-–—]|\s*[!?.]|\s*#|\s*$)/i);
+    const destination = destinationMatch ? destinationMatch[1].trim() : '';
+
+    // Count expected locations from title
+    const countMatch = videoInfo.title.match(/(\d+)\s*(must|best|top|places|things|spots|cafe|restaurant|unique)/i);
+    const expectedCount = countMatch ? parseInt(countMatch[1]) : 5;
+
+    const prompt = `You are analyzing TikTok video cover images to extract the EXACT visible text, fonts, and styling.
 
 VIDEO INFO:
-- Title: "${videoInfo.title}"
 - Author: @${videoInfo.author}
 - Duration: ${videoInfo.duration} seconds
-- URL: ${originalUrl}
+- Expected locations: approximately ${expectedCount}
 
-Based on the title and typical TikTok travel/lifestyle video structures, create a detailed scene-by-scene breakdown.
+CRITICAL FONT & TEXT ANALYSIS INSTRUCTIONS:
+1. READ THE EXACT TEXT you see on screen - do NOT invent or guess text
+2. If you see an intro/hook text like "10 Dreamiest Places in Northern Thailand", extract it EXACTLY
+3. If you can't clearly read intro text, set it to null
+4. For numbered locations (1. Blue Temple, 2. White Temple), extract EXACT names
+5. ANALYZE FONTS CAREFULLY:
+   - Is the title/hook in a decorative script font? (like Pacifico, Dancing Script)
+   - Is it a clean sans-serif? (like Poppins, Montserrat)
+   - Is it a bold display font? (like Bebas Neue, Oswald)
+   - Are numbers in a different style?
 
-IMPORTANT: Your response must be ONLY valid JSON, no other text. Use this exact structure:
+DESCRIBE THE FONTS YOU SEE:
+- "Elegant flowing script with swashes" → script style
+- "Bold condensed uppercase" → display style
+- "Clean modern rounded sans-serif" → sans-serif style
+- "Classic serif with flourishes" → serif style
+
+Respond with ONLY valid JSON:
 
 {
   "type": "reel",
   "totalDuration": ${videoInfo.duration},
+  "extractedText": {
+    "hookText": "EXACT intro text if visible (e.g., '10 Dreamiest Places in Northern Thailand') or null if not readable",
+    "visibleLocations": ["The Blue Temple", "Cafe Name", "etc - EXACT names you can read"]
+  },
+  "extractedFonts": {
+    "titleFont": { "style": "script|serif|sans-serif|display", "weight": "normal|bold", "description": "DESCRIBE what you see - e.g., 'elegant flowing script with decorative swashes'" },
+    "bodyFont": { "style": "serif|sans-serif", "weight": "normal|bold", "description": "e.g., 'clean rounded sans-serif'" },
+    "accentFont": { "style": "serif|sans-serif|display", "weight": "normal|bold", "description": "e.g., 'bold condensed display'" }
+  },
+  "visualStyle": "elegant|bold|minimal|playful|cinematic|vintage",
   "locations": [
     {
+      "locationId": 0,
+      "locationName": "Intro",
+      "scenes": [{ "id": 1, "startTime": 0, "endTime": 2, "duration": 2, "textOverlay": "EXACT intro text if readable, or null", "description": "Hook shot with title text" }],
+      "totalDuration": 2
+    },
+    {
       "locationId": 1,
-      "locationName": "Location Name Here",
-      "scenes": [
-        {
-          "id": 1,
-          "startTime": 0,
-          "endTime": 3,
-          "duration": 3,
-          "textOverlay": "Text that appears on screen or null",
-          "description": "What to film: brief description of the shot"
-        }
-      ],
-      "totalDuration": 0
+      "locationName": "EXACT location name from image",
+      "scenes": [{ "id": 11, "startTime": 2, "endTime": 4, "duration": 2, "textOverlay": "1. EXACT name from image", "description": "Shot description" }],
+      "totalDuration": 2
     }
   ],
-  "music": {
-    "name": "Trending TikTok Sound",
-    "hasMusic": true
-  }
+  "music": { "name": "Trending TikTok Sound", "hasMusic": true }
 }
 
-Requirements:
-1. Break down the ${videoInfo.duration} second video into logical scenes
-2. Group scenes by location (if it's a "Top 10" or list video, each item is a location)
-3. Each scene should be 2-5 seconds
-4. Include text overlays where they would typically appear (titles, location names, numbers)
-5. Make descriptions actionable ("Film wide shot of entrance", "Close-up of food", etc.)
-6. Calculate totalDuration for each location as sum of scene durations
-
-Respond with ONLY the JSON, no explanation:`;
+Create ${expectedCount} location entries plus Intro and Outro.
+IMPORTANT: Only include intro textOverlay if you can CLEARLY READ IT in the image. If not visible, set to null.
+Respond with ONLY the JSON:`;
 
     let analysisResult: VideoAnalysis;
 
-    console.log('Calling Claude API with prompt length:', prompt.length);
+    console.log('Calling Claude Vision API to analyze video thumbnail for:', destination || 'unknown destination');
+
+    // Build message content with thumbnail for vision analysis
+    type AllowedMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+    type ImageContent = { type: 'image'; source: { type: 'base64'; media_type: AllowedMediaType; data: string } };
+    type TextContent = { type: 'text'; text: string };
+    const messageContent: Array<TextContent | ImageContent> = [];
+
+    // Try to fetch and convert thumbnail to base64 for Claude vision
+    let hasImage = false;
+
+    // Build list of image URLs to try (all covers + thumbnail)
+    const imageUrls: string[] = [];
+
+    // Add all available covers from TikTok (origin_cover, cover, dynamic_cover, etc.)
+    if (videoInfo.allCovers && videoInfo.allCovers.length > 0) {
+      for (const coverUrl of videoInfo.allCovers) {
+        if (coverUrl && coverUrl.startsWith('http') && !imageUrls.includes(coverUrl)) {
+          imageUrls.push(coverUrl);
+        }
+      }
+      console.log(`Found ${imageUrls.length} cover images to analyze`);
+    }
+
+    // Fallback to thumbnail if no covers
+    if (imageUrls.length === 0 && videoInfo.thumbnail && videoInfo.thumbnail.startsWith('http')) {
+      imageUrls.push(videoInfo.thumbnail);
+    }
+
+    // Try fetching images from multiple sources
+    for (const imageUrl of imageUrls) {
+      if (hasImage) break;
+
+      // Try multiple methods to fetch the thumbnail
+      const fetchMethods = [
+        // Method 1: Direct fetch with browser-like headers
+        async () => {
+          console.log('Fetch Method 1: Direct fetch with browser headers');
+          return fetch(imageUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Referer': 'https://www.tiktok.com/',
+              'Sec-Fetch-Dest': 'image',
+              'Sec-Fetch-Mode': 'no-cors',
+              'Sec-Fetch-Site': 'cross-site',
+            },
+          });
+        },
+        // Method 2: Use a CORS proxy (allorigins)
+        async () => {
+          console.log('Fetch Method 2: Using allorigins proxy');
+          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
+          return fetch(proxyUrl);
+        },
+        // Method 3: Use corsproxy.io
+        async () => {
+          console.log('Fetch Method 3: Using corsproxy.io');
+          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
+          return fetch(proxyUrl);
+        },
+        // Method 4: Use images.weserv.nl (image proxy that handles many sources)
+        async () => {
+          console.log('Fetch Method 4: Using weserv.nl image proxy');
+          const proxyUrl = `https://images.weserv.nl/?url=${encodeURIComponent(imageUrl)}&w=720&output=jpg`;
+          return fetch(proxyUrl);
+        },
+        // Method 5: Use wsrv.nl (alternative weserv)
+        async () => {
+          console.log('Fetch Method 5: Using wsrv.nl image proxy');
+          const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(imageUrl)}&w=720&output=jpg`;
+          return fetch(proxyUrl);
+        },
+      ];
+
+      for (const fetchMethod of fetchMethods) {
+        try {
+          console.log('Trying to fetch thumbnail...');
+          const imageResponse = await fetchMethod();
+
+          if (imageResponse.ok) {
+            const imageBuffer = await imageResponse.arrayBuffer();
+
+            // Skip if response is too small (likely an error page)
+            if (imageBuffer.byteLength < 1000) {
+              console.log('Response too small, likely not an image:', imageBuffer.byteLength);
+              continue;
+            }
+
+            const base64Image = Buffer.from(imageBuffer).toString('base64');
+            const rawContentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+
+            // Map to allowed media types
+            let mediaType: AllowedMediaType = 'image/jpeg';
+            if (rawContentType.includes('png')) mediaType = 'image/png';
+            else if (rawContentType.includes('gif')) mediaType = 'image/gif';
+            else if (rawContentType.includes('webp')) mediaType = 'image/webp';
+
+            console.log('Thumbnail fetched successfully! Size:', imageBuffer.byteLength, 'Type:', mediaType);
+
+            messageContent.push({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: mediaType,
+                data: base64Image,
+              },
+            });
+            messageContent.push({
+              type: 'text',
+              text: `LOOK AT THIS IMAGE CAREFULLY. This is a thumbnail from a TikTok video. Read any text overlays, location names, or numbered items visible. Then:\n\n${prompt}`,
+            });
+            hasImage = true;
+            break; // Success, exit the loop
+          } else {
+            console.log('Fetch failed:', imageResponse.status, imageResponse.statusText);
+          }
+        } catch (imgError) {
+          console.log('Fetch method failed:', imgError instanceof Error ? imgError.message : imgError);
+        }
+      }
+    } // End of imageUrls loop
+
+    if (!hasImage) {
+      console.log('All thumbnail fetch methods failed for all URLs');
+    }
+
+    if (!hasImage) {
+      console.log('No image available, using text-only prompt');
+      messageContent.push({
+        type: 'text',
+        text: prompt,
+      });
+    }
+
+    console.log('Sending request to Claude API...');
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -407,41 +831,74 @@ Respond with ONLY the JSON, no explanation:`;
       messages: [
         {
           role: 'user',
-          content: prompt,
+          content: messageContent,
         },
       ],
     });
 
     console.log('Claude response received, content type:', message.content[0]?.type);
     const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-    console.log('Claude response text (first 500 chars):', responseText.substring(0, 500));
+    console.log('Claude response text (first 1000 chars):', responseText.substring(0, 1000));
 
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       console.log('JSON match found, parsing...');
       analysisResult = JSON.parse(jsonMatch[0]);
 
+      // Log extracted info for debugging
+      console.log('=== CLAUDE VISION SUCCESS ===');
+      console.log('Extracted TEXT from thumbnail:', (analysisResult as any).extractedText);
+      console.log('Extracted locations from Claude:', analysisResult.locations?.map((l: LocationGroup) => l.locationName));
+      console.log('Intro text overlay:', analysisResult.locations?.[0]?.scenes?.[0]?.textOverlay);
+      console.log('Extracted fonts from Claude:', (analysisResult as any).extractedFonts);
+      console.log('Visual style:', (analysisResult as any).visualStyle);
+
+      // Map extracted font styles to actual Google Fonts
+      const extractedFontStyles = (analysisResult as any).extractedFonts || {};
+      const visualStyle = (analysisResult as any).visualStyle || 'modern';
+
+      const mappedFonts = mapExtractedFonts(extractedFontStyles, visualStyle);
+      console.log('Mapped fonts:', mappedFonts);
+
       // Add text styles and calculate location durations
+      // IMPORTANT: Force intro (locationId=0) textOverlay to null - thumbnails show video title, not actual intro text
       analysisResult.locations = analysisResult.locations.map((loc, locIdx) => ({
         ...loc,
         totalDuration: loc.scenes.reduce((sum, scene) => sum + scene.duration, 0),
         scenes: loc.scenes.map((scene, sceneIdx) => ({
           ...scene,
-          textStyle: getTextStyleForScene(loc.locationId, sceneIdx, scene.textOverlay)
+          // Clear intro text - user must fill in or use Deep Analyze
+          textOverlay: loc.locationId === 0 ? null : scene.textOverlay,
+          textStyle: getTextStyleForSceneWithFonts(loc.locationId, sceneIdx, scene.textOverlay, mappedFonts)
         }))
       }));
 
-      // Add empty detectedFonts (will be populated by caller)
+      // Add detected fonts for use in template
       analysisResult.detectedFonts = [];
+      (analysisResult as any).extractedFontStyles = extractedFontStyles;
+      (analysisResult as any).mappedFonts = mappedFonts;
 
       console.log('Claude analysis successful:', analysisResult.locations.length, 'locations');
+      // Mark that we used actual thumbnail extraction
+      (analysisResult as any).extractionMethod = 'claude-vision';
       return analysisResult;
     }
 
-    console.log('No JSON match found in response');
+    console.log('No JSON match found in response, full response:', responseText);
     throw new Error('Could not parse Claude response');
   } catch (error) {
-    console.error('Claude analysis error:', error instanceof Error ? error.message : error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Claude analysis FAILED:', errorMessage);
+    console.error('Full error:', error);
+
+    // Check if it's an API key issue
+    if (errorMessage.includes('api_key') || errorMessage.includes('authentication') || errorMessage.includes('401')) {
+      console.error('ANTHROPIC_API_KEY may not be set correctly on Vercel!');
+    }
+
+    console.log('=== FALLING BACK TO DATABASE (Claude failed) ===');
+    console.log('Reason: Claude Vision could not analyze the thumbnail');
+    console.log('Using title-based extraction instead of actual thumbnail text');
     return createFallbackAnalysis(videoInfo);
   }
 }
@@ -480,7 +937,54 @@ function createFallbackAnalysis(videoInfo: { title: string; duration: number }):
   const titleLower = title.toLowerCase();
   const duration = videoInfo.duration || 30;
 
-  // Extract numbered items from title
+  // Detect visual style from title keywords for font selection
+  let visualStyle = 'modern';
+  if (/dream|dreamy|magical|fairy|fantasy/i.test(title)) visualStyle = 'elegant';
+  else if (/bold|epic|crazy|insane|best|ultimate|top/i.test(title)) visualStyle = 'bold';
+  else if (/minimal|clean|simple|aesthetic/i.test(title)) visualStyle = 'minimal';
+  else if (/fun|cute|yummy|adorable/i.test(title)) visualStyle = 'playful';
+  else if (/cinematic|film|movie/i.test(title)) visualStyle = 'cinematic';
+  else if (/vintage|retro|classic/i.test(title)) visualStyle = 'vintage';
+  else if (/travel|explore|wanderlust/i.test(title)) visualStyle = 'elegant';
+
+  // Get mapped fonts based on detected style
+  const mappedFonts = mapExtractedFonts({}, visualStyle);
+  console.log('Fallback visual style:', visualStyle, 'Mapped fonts:', mappedFonts);
+
+  // Extract destination from title
+  const destinationMatch = title.match(/in\s+([A-Z][a-zA-Z\s]+?)(?:\s*[-–—]|\s*[!?.]|\s*#|\s*$)/i);
+  const destination = destinationMatch ? destinationMatch[1].trim() : '';
+
+  // Common places database for popular destinations
+  const destinationPlaces: Record<string, string[]> = {
+    'da nang': ['Dragon Bridge', 'Marble Mountains', 'Ba Na Hills', 'My Khe Beach', 'Han Market', 'Lady Buddha', 'Son Tra Peninsula', 'Hoi An Ancient Town', 'Golden Bridge', 'Asia Park'],
+    'hanoi': ['Hoan Kiem Lake', 'Old Quarter', 'Temple of Literature', 'Ho Chi Minh Mausoleum', 'Train Street', 'West Lake', 'Dong Xuan Market', 'St. Joseph Cathedral', 'Thang Long Citadel', 'Ngoc Son Temple'],
+    'ho chi minh': ['Ben Thanh Market', 'War Remnants Museum', 'Notre-Dame Cathedral', 'Cu Chi Tunnels', 'Bitexco Tower', 'Bui Vien Street', 'Independence Palace', 'Jade Emperor Pagoda', 'Saigon Central Post Office', 'District 1'],
+    'bali': ['Ubud Rice Terraces', 'Tanah Lot Temple', 'Uluwatu Temple', 'Seminyak Beach', 'Kuta Beach', 'Sacred Monkey Forest', 'Tirta Empul', 'Mount Batur', 'Nusa Penida', 'Tegallalang'],
+    'tokyo': ['Shibuya Crossing', 'Senso-ji Temple', 'Tokyo Tower', 'Shinjuku', 'Harajuku', 'Meiji Shrine', 'Akihabara', 'Tsukiji Market', 'Odaiba', 'Ginza'],
+    'bangkok': ['Grand Palace', 'Wat Arun', 'Chatuchak Market', 'Khao San Road', 'Chinatown', 'Wat Pho', 'MBK Center', 'Asiatique', 'Jim Thompson House', 'Lumphini Park'],
+    'singapore': ['Marina Bay Sands', 'Gardens by the Bay', 'Sentosa Island', 'Orchard Road', 'Chinatown', 'Little India', 'Clarke Quay', 'Merlion Park', 'Haji Lane', 'Jewel Changi'],
+    'paris': ['Eiffel Tower', 'Louvre Museum', 'Champs-Élysées', 'Notre-Dame', 'Montmartre', 'Arc de Triomphe', 'Sacré-Cœur', 'Seine River', 'Musée d\'Orsay', 'Le Marais'],
+    'london': ['Big Ben', 'Tower Bridge', 'Buckingham Palace', 'British Museum', 'Camden Market', 'Westminster Abbey', 'Hyde Park', 'Covent Garden', 'Borough Market', 'Tower of London'],
+    'new york': ['Times Square', 'Central Park', 'Statue of Liberty', 'Brooklyn Bridge', 'Empire State', 'High Line', 'Grand Central', 'DUMBO', 'Soho', 'Fifth Avenue'],
+    'seoul': ['Gyeongbokgung Palace', 'Bukchon Hanok Village', 'Myeongdong', 'N Seoul Tower', 'Hongdae', 'Gangnam', 'Insadong', 'Lotte World', 'Dongdaemun', 'Cheonggyecheon Stream'],
+  };
+
+  // Find matching destination places
+  const destLower = destination.toLowerCase();
+  let placesForDest = destinationPlaces[destLower] || [];
+
+  // Try partial match if exact match fails
+  if (placesForDest.length === 0) {
+    for (const [key, places] of Object.entries(destinationPlaces)) {
+      if (destLower.includes(key) || key.includes(destLower)) {
+        placesForDest = places;
+        break;
+      }
+    }
+  }
+
+  // Extract numbered items from title (e.g., "1. Cafe Name 2. Another Place")
   const numberedItems: string[] = [];
   const numberedPattern = /(\d+)\.\s*([^0-9]+?)(?=\d+\.|#|$)/g;
   let match;
@@ -495,119 +999,158 @@ function createFallbackAnalysis(videoInfo: { title: string; duration: number }):
   const emojiMatch = title.match(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu);
   const detectedEmoji = emojiMatch?.[0] || '📍';
 
+  // Parse number from title like "8 must-visit places" or "Top 10 cafes"
   const numberMatch = titleLower.match(/(\d+)\s*(must|best|top|places|things|spots|cafe|restaurant|food|unique)/i);
   const itemCount = numberedItems.length > 0 ? numberedItems.length : (numberMatch ? parseInt(numberMatch[1]) : 5);
 
-  const introTime = 3;
-  const outroTime = 2;
-  const contentTime = duration - introTime - outroTime;
-  const timePerItem = Math.max(3, Math.floor(contentTime / itemCount));
+  // Calculate time distribution - ALWAYS fit all locations
+  const introTime = Math.min(2, duration * 0.1); // 10% or 2s max for intro
+  const outroTime = Math.min(2, duration * 0.1); // 10% or 2s max for outro
+  const contentTime = Math.max(duration - introTime - outroTime, duration * 0.8); // At least 80% for content
+
+  // Calculate time per item - must fit ALL items
+  const timePerItem = Math.max(1, contentTime / itemCount); // At least 1s per item
 
   const locations: LocationGroup[] = [];
   let currentTime = 0;
 
-  const hookText = title.split(/\d+\./)[0].trim().slice(0, 100) || title.slice(0, 50);
-
-  // Intro with hook style
+  // Intro with hook style - user will fill in their own intro text
+  const actualIntroTime = Math.max(1, Math.round(introTime));
   locations.push({
     locationId: 0,
     locationName: 'Intro',
     scenes: [{
       id: 1,
       startTime: 0,
-      endTime: introTime,
-      duration: introTime,
-      textOverlay: hookText,
+      endTime: actualIntroTime,
+      duration: actualIntroTime,
+      textOverlay: null, // User will add their own intro text
       textStyle: {
         ...TEXT_STYLES.hook,
+        fontFamily: mappedFonts.titleFont,
+        fontWeight: mappedFonts.titleWeight,
         emoji: detectedEmoji,
       },
-      description: 'Hook shot - eye-catching establishing shot'
+      description: 'Hook shot - add your intro text'
     }],
-    totalDuration: introTime
+    totalDuration: actualIntroTime
   });
-  currentTime += introTime;
+  currentTime = actualIntroTime;
 
-  // Content items with location styles
+  // Content items - ALWAYS create all items
   for (let i = 1; i <= itemCount; i++) {
     const sceneStart = currentTime;
-    const sceneDuration = Math.min(timePerItem, duration - currentTime - outroTime);
+    // Round to 1 decimal for cleaner display
+    const sceneDuration = Math.max(1, Math.round(timePerItem * 10) / 10);
 
-    if (sceneDuration <= 0) break;
-
-    const itemName = numberedItems[i - 1] || `Location ${i}`;
+    // Priority: numbered items from title > destination places > generic
+    const itemName = numberedItems[i - 1] || placesForDest[i - 1] || `Location ${i}`;
     const displayName = itemName.length > 40 ? itemName.slice(0, 40) + '...' : itemName;
 
-    locations.push({
-      locationId: i,
-      locationName: displayName,
-      scenes: [
-        {
-          id: i * 10 + 1,
-          startTime: sceneStart,
-          endTime: sceneStart + Math.floor(sceneDuration * 0.4),
-          duration: Math.floor(sceneDuration * 0.4),
-          textOverlay: `${i}. ${displayName}`,
-          textStyle: {
-            ...TEXT_STYLES.numbered,
-            hasEmoji: true,
-            emoji: detectedEmoji,
-            emojiPosition: 'before' as const,
+    // For very short videos, just one scene per location
+    if (sceneDuration < 2) {
+      locations.push({
+        locationId: i,
+        locationName: displayName,
+        scenes: [
+          {
+            id: i * 10 + 1,
+            startTime: sceneStart,
+            endTime: sceneStart + sceneDuration,
+            duration: sceneDuration,
+            textOverlay: `${i}. ${displayName}`,
+            textStyle: {
+              ...TEXT_STYLES.numbered,
+              fontFamily: mappedFonts.accentFont,
+              fontWeight: mappedFonts.bodyWeight,
+              hasEmoji: true,
+              emoji: detectedEmoji,
+              emojiPosition: 'before' as const,
+            },
+            description: `Shot of ${displayName}`
+          }
+        ],
+        totalDuration: sceneDuration
+      });
+    } else {
+      // For longer scenes, split into multiple shots
+      const shot1Duration = Math.max(1, Math.round(sceneDuration * 0.5));
+      const shot2Duration = Math.max(1, sceneDuration - shot1Duration);
+
+      locations.push({
+        locationId: i,
+        locationName: displayName,
+        scenes: [
+          {
+            id: i * 10 + 1,
+            startTime: sceneStart,
+            endTime: sceneStart + shot1Duration,
+            duration: shot1Duration,
+            textOverlay: `${i}. ${displayName}`,
+            textStyle: {
+              ...TEXT_STYLES.numbered,
+              fontFamily: mappedFonts.accentFont,
+              fontWeight: mappedFonts.bodyWeight,
+              hasEmoji: true,
+              emoji: detectedEmoji,
+              emojiPosition: 'before' as const,
+            },
+            description: `Establishing shot of ${displayName}`
           },
-          description: `Wide establishing shot of ${displayName}`
-        },
-        {
-          id: i * 10 + 2,
-          startTime: sceneStart + Math.floor(sceneDuration * 0.4),
-          endTime: sceneStart + Math.floor(sceneDuration * 0.7),
-          duration: Math.floor(sceneDuration * 0.3),
-          textOverlay: null,
-          textStyle: TEXT_STYLES.locationLabel,
-          description: 'Detail shot - food, interior, or highlight'
-        },
-        {
-          id: i * 10 + 3,
-          startTime: sceneStart + Math.floor(sceneDuration * 0.7),
-          endTime: sceneStart + sceneDuration,
-          duration: Math.ceil(sceneDuration * 0.3),
-          textOverlay: null,
-          textStyle: TEXT_STYLES.locationLabel,
-          description: 'Reaction or experience shot'
-        }
-      ],
-      totalDuration: sceneDuration
-    });
+          {
+            id: i * 10 + 2,
+            startTime: sceneStart + shot1Duration,
+            endTime: sceneStart + sceneDuration,
+            duration: shot2Duration,
+            textOverlay: null,
+            textStyle: {
+              ...TEXT_STYLES.locationLabel,
+              fontFamily: mappedFonts.bodyFont,
+            },
+            description: 'Detail or reaction shot'
+          }
+        ],
+        totalDuration: sceneDuration
+      });
+    }
     currentTime += sceneDuration;
   }
 
-  // Outro with CTA style
-  if (currentTime < duration) {
-    locations.push({
-      locationId: itemCount + 1,
-      locationName: 'Outro',
-      scenes: [{
-        id: 999,
-        startTime: currentTime,
-        endTime: duration,
-        duration: duration - currentTime,
-        textOverlay: 'Follow for more! 👆',
-        textStyle: TEXT_STYLES.cta,
-        description: 'Call to action - wave, point at follow button'
-      }],
-      totalDuration: duration - currentTime
-    });
-  }
+  // Outro with CTA style - use remaining time
+  const actualLocationCount = locations.length; // includes intro
+  const remainingTime = Math.max(1, duration - currentTime);
+
+  locations.push({
+    locationId: actualLocationCount, // Sequential ID after all locations
+    locationName: 'Outro',
+    scenes: [{
+      id: 999,
+      startTime: currentTime,
+      endTime: currentTime + remainingTime,
+      duration: remainingTime,
+      textOverlay: 'Follow for more! 👆',
+      textStyle: {
+        ...TEXT_STYLES.cta,
+        fontFamily: mappedFonts.bodyFont,
+      },
+      description: 'Call to action - wave, point at follow button'
+    }],
+    totalDuration: remainingTime
+  });
 
   return {
     type: 'reel',
     totalDuration: duration,
     locations,
     detectedFonts: [], // Will be added by caller
+    visualStyle,
+    mappedFonts,
+    extractionMethod: 'fallback-database', // Claude Vision failed, using title-based extraction
     music: {
       name: 'Trending Sound',
       hasMusic: true
     },
-  };
+  } as VideoAnalysis;
 }
 
 function generateTemplateId(): string {

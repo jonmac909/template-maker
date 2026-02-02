@@ -103,6 +103,8 @@ export default function ReelEditor() {
   const [fontLibrary, setFontLibrary] = useState<string[]>([]);
   const [showAddFont, setShowAddFont] = useState(false);
   const [customFontName, setCustomFontName] = useState('');
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [videoTitle, setVideoTitle] = useState('');
 
   useEffect(() => {
     // Initialize font library
@@ -145,6 +147,9 @@ export default function ReelEditor() {
   };
 
   const initializeLocations = (data: Template) => {
+    // Set video title from template
+    setVideoTitle(data.videoInfo?.title || 'Video Template');
+
     if (data.locations) {
       setLocations(data.locations.map((loc, idx) => ({
         ...loc,
@@ -157,6 +162,22 @@ export default function ReelEditor() {
         }))
       })));
     }
+  };
+
+  // Save video title
+  const saveVideoTitle = () => {
+    if (template && videoTitle.trim()) {
+      const updatedTemplate = {
+        ...template,
+        videoInfo: {
+          ...template.videoInfo,
+          title: videoTitle.trim(),
+        }
+      };
+      setTemplate(updatedTemplate as Template);
+      localStorage.setItem(`template_${params.id}`, JSON.stringify(updatedTemplate));
+    }
+    setEditingTitle(false);
   };
 
   const toggleLocation = (locationId: number) => {
@@ -300,7 +321,6 @@ export default function ReelEditor() {
   const filledScenes = locations.reduce((sum, loc) =>
     sum + loc.scenes.filter(s => s.filled).length, 0
   );
-  const videoTitle = template.videoInfo?.title?.slice(0, 40) || 'Video Template';
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
@@ -451,19 +471,28 @@ export default function ReelEditor() {
                     </button>
                   </div>
                 )}
-                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                <div className="flex gap-2 overflow-x-auto pb-1">
                   {fontLibrary.map(font => (
                     <button
                       key={font}
                       onClick={() => setEditStyle({...editStyle, fontFamily: font})}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${
+                      className={`flex flex-col items-center px-3 py-2 rounded-lg whitespace-nowrap flex-shrink-0 min-w-[70px] ${
                         editStyle.fontFamily === font
-                          ? 'bg-[#8B5CF6] text-white'
-                          : 'bg-[#2D2640] text-white/60'
+                          ? 'bg-[#8B5CF6] text-white ring-2 ring-white/30'
+                          : 'bg-[#2D2640] text-white/80 hover:bg-[#3D3650]'
                       }`}
-                      style={{ fontFamily: font }}
                     >
-                      {font}
+                      {/* Font preview sample */}
+                      <span
+                        className="text-lg leading-tight mb-0.5"
+                        style={{ fontFamily: font }}
+                      >
+                        Abc
+                      </span>
+                      {/* Font name */}
+                      <span className="text-[9px] text-white/50 truncate max-w-[60px]">
+                        {font.split(' ')[0]}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -585,9 +614,43 @@ export default function ReelEditor() {
         </button>
       </div>
 
-      {/* Video Info */}
+      {/* Video Info - Editable Title */}
       <div className="px-4 py-3 border-b border-white/10">
-        <p className="text-sm font-medium text-white line-clamp-1">{videoTitle}</p>
+        {editingTitle ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={videoTitle}
+              onChange={(e) => setVideoTitle(e.target.value)}
+              className="flex-1 bg-[#2D2640] rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveVideoTitle();
+                if (e.key === 'Escape') setEditingTitle(false);
+              }}
+            />
+            <button
+              onClick={saveVideoTitle}
+              className="px-3 py-2 rounded-lg bg-[#8B5CF6] text-white text-xs font-semibold"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => setEditingTitle(false)}
+              className="px-3 py-2 rounded-lg bg-white/10 text-white text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setEditingTitle(true)}
+            className="flex items-center gap-2 group w-full text-left"
+          >
+            <p className="text-sm font-medium text-white line-clamp-1 flex-1">{videoTitle}</p>
+            <Pencil className="w-3.5 h-3.5 text-white/30 group-hover:text-white/60 transition-colors" />
+          </button>
+        )}
         <div className="flex items-center gap-3 mt-1">
           <div className="flex items-center gap-1">
             <Clock className="w-3 h-3 text-white/50" />
@@ -735,8 +798,10 @@ export default function ReelEditor() {
                                   )}
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-white/40 flex-1 text-left truncate">
-                                  Add text overlay...
+                                <span className="text-[10px] text-white/40 flex-1 text-left truncate italic">
+                                  {location.locationId === 0
+                                    ? '✏️ Add your intro text (e.g., "10 Dreamiest Places...")'
+                                    : 'Add text overlay...'}
                                 </span>
                               )}
                               <Pencil className="w-3 h-3 text-white/40 flex-shrink-0" />

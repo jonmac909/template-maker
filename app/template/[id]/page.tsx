@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { X, Sparkles, Clock, MapPin, Film, Type } from 'lucide-react';
+import { X, Sparkles, Clock, MapPin, Film, Type, Bookmark, Check, Scan, Loader2 } from 'lucide-react';
+import { extractVideoFrames, generateFrameTimestamps, isBrowser } from '../../lib/videoFrameExtractor';
 
 interface TextStyle {
   fontFamily: string;
@@ -37,11 +38,15 @@ interface Template {
   platform: string;
   type: 'reel' | 'carousel';
   totalDuration?: number;
+  isDraft?: boolean;
+  isEdit?: boolean;
+  deepAnalyzed?: boolean;
   videoInfo?: {
     title: string;
     author: string;
     duration: number;
     thumbnail: string;
+    videoUrl?: string;
   };
   locations?: LocationGroup[];
   slides?: Array<{
@@ -50,6 +55,10 @@ interface Template {
     position: string;
     style: string;
   }>;
+  extractedFonts?: {
+    titleFont?: { style: string; weight: string; description: string };
+    locationFont?: { style: string; weight: string; description: string };
+  };
 }
 
 const LOCATION_COLORS = ['#8B5CF6', '#14B8A6', '#F472B6', '#FCD34D', '#E879F9', '#A78BFA', '#22D3EE'];
@@ -59,6 +68,9 @@ export default function TemplateBreakdown() {
   const router = useRouter();
   const [template, setTemplate] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saved, setSaved] = useState(false);
+  const [deepAnalyzing, setDeepAnalyzing] = useState(false);
+  const [analysisStatus, setAnalysisStatus] = useState<string>('');
 
   useEffect(() => {
     fetchTemplate();
@@ -93,6 +105,131 @@ export default function TemplateBreakdown() {
       router.push(`/editor/reel/${params.id}`);
     } else {
       router.push(`/editor/carousel/${params.id}`);
+    }
+  };
+
+  const handleSaveTemplate = () => {
+    if (!template) return;
+
+    // Remove draft status and save as permanent template
+    const savedTemplate = {
+      ...template,
+      isDraft: false,
+      isEdit: false,
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(`template_${params.id}`, JSON.stringify(savedTemplate));
+    setTemplate(savedTemplate);
+    setSaved(true);
+
+    // Reset saved indicator after 2 seconds
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleDeepAnalyze = async () => {
+    if (!template || !isBrowser()) return;
+
+    const videoUrl = template.videoInfo?.videoUrl;
+    if (!videoUrl) {
+      setAnalysisStatus('No video URL available for deep analysis');
+      setTimeout(() => setAnalysisStatus(''), 3000);
+      return;
+    }
+
+    setDeepAnalyzing(true);
+    setAnalysisStatus('Loading video...');
+
+    try {
+      const duration = template.totalDuration || template.videoInfo?.duration || 30;
+
+      // Generate timestamps for frame extraction
+      const timestamps = generateFrameTimestamps(duration, {
+        introFrameAt: 0.5,
+        numLocationFrames: Math.min(template.locations?.length || 5, 8),
+        outroFrameAt: 1,
+      });
+
+      setAnalysisStatus(`Extracting ${timestamps.length} frames...`);
+
+      // Extract frames from video
+      const frames = await extractVideoFrames(videoUrl, timestamps, {
+        maxWidth: 720,
+        quality: 0.85,
+        timeout: 45000,
+      });
+
+      if (frames.length === 0) {
+        throw new Error('Could not extract frames from video');
+      }
+
+      setAnalysisStatus(`Analyzing ${frames.length} frames with AI...`);
+
+      // Send frames to API for analysis
+      const response = await fetch('/api/analyze-frames', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          frames: frames.map(f => ({ timestamp: f.timestamp, base64: f.base64 })),
+          videoInfo: {
+            title: template.videoInfo?.title || 'Unknown',
+            author: template.videoInfo?.author || 'Unknown',
+            duration,
+          },
+          expectedLocations: template.locations?.length || 5,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Analysis API failed');
+      }
+
+      const result = await response.json();
+      setAnalysisStatus('Updating template with analyzed data...');
+
+      // Update template with deep analysis results
+      if (result.analysis) {
+        const updatedLocations = template.locations?.map((loc, idx) => {
+          const analysisLoc = result.analysis.locations?.[idx];
+          if (analysisLoc && loc.locationId === 0) {
+            // Update intro with extracted hook text
+            return {
+              ...loc,
+              scenes: loc.scenes.map(scene => ({
+                ...scene,
+                textOverlay: result.analysis.extractedText?.hookText || scene.textOverlay,
+              })),
+            };
+          }
+          if (analysisLoc && analysisLoc.textOverlay) {
+            return {
+              ...loc,
+              locationName: analysisLoc.locationName || loc.locationName,
+              scenes: loc.scenes.map(scene => ({
+                ...scene,
+                textOverlay: analysisLoc.textOverlay || scene.textOverlay,
+              })),
+            };
+          }
+          return loc;
+        });
+
+        const updatedTemplate = {
+          ...template,
+          deepAnalyzed: true,
+          locations: updatedLocations,
+          extractedFonts: result.analysis.extractedFonts,
+        };
+
+        localStorage.setItem(`template_${params.id}`, JSON.stringify(updatedTemplate));
+        setTemplate(updatedTemplate);
+        setAnalysisStatus('Deep analysis complete!');
+      }
+    } catch (error) {
+      console.error('Deep analysis failed:', error);
+      setAnalysisStatus(`Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setDeepAnalyzing(false);
+      setTimeout(() => setAnalysisStatus(''), 4000);
     }
   };
 
@@ -156,7 +293,14 @@ export default function TemplateBreakdown() {
         >
           <X className="w-5 h-5 text-white" />
         </button>
-        <h2 className="text-[15px] font-semibold text-white">Template Preview</h2>
+        <div className="flex items-center gap-2">
+          {template.isDraft && (
+            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 text-[10px] font-semibold uppercase">
+              Draft
+            </span>
+          )}
+          <h2 className="text-[15px] font-semibold text-white">Template Preview</h2>
+        </div>
         <div className="w-9 h-9" />
       </div>
 
@@ -252,8 +396,74 @@ export default function TemplateBreakdown() {
       {/* Spacer */}
       <div className="flex-1 min-h-4" />
 
-      {/* Bottom Area - Use Template Button */}
-      <div className="px-4 pt-4 pb-8">
+      {/* Bottom Area - Buttons */}
+      <div className="px-4 pt-4 pb-8 space-y-3">
+        {/* Analysis Status */}
+        {analysisStatus && (
+          <div className="text-center py-2 px-4 rounded-xl bg-[#8B5CF6]/20 border border-[#8B5CF6]/30">
+            <p className="text-sm text-[#8B5CF6]">{analysisStatus}</p>
+          </div>
+        )}
+
+        {/* Deep Analyze Button - Extract frames from video for better analysis */}
+        {template.videoInfo?.videoUrl && !template.deepAnalyzed && (
+          <button
+            onClick={handleDeepAnalyze}
+            disabled={deepAnalyzing}
+            className={`w-full h-[48px] flex items-center justify-center gap-2 rounded-[24px] border-2 transition-all ${
+              deepAnalyzing
+                ? 'bg-[#8B5CF6]/20 border-[#8B5CF6] text-[#8B5CF6]'
+                : 'bg-transparent border-cyan-500/50 text-cyan-400 hover:border-cyan-400'
+            }`}
+          >
+            {deepAnalyzing ? (
+              <>
+                <Loader2 className="w-[18px] h-[18px] animate-spin" />
+                <span className="text-[14px] font-medium">Analyzing...</span>
+              </>
+            ) : (
+              <>
+                <Scan className="w-[18px] h-[18px]" />
+                <span className="text-[14px] font-medium">Deep Analyze Video (Extract Frames)</span>
+              </>
+            )}
+          </button>
+        )}
+
+        {/* Deep Analyzed Badge */}
+        {template.deepAnalyzed && (
+          <div className="flex items-center justify-center gap-2 py-2 text-green-400">
+            <Check className="w-4 h-4" />
+            <span className="text-sm font-medium">Deep analysis complete</span>
+          </div>
+        )}
+
+        {/* Save Template Button - Show if it's a draft */}
+        {template.isDraft && (
+          <button
+            onClick={handleSaveTemplate}
+            disabled={saved}
+            className={`w-full h-[52px] flex items-center justify-center gap-2 rounded-[26px] border-2 transition-all ${
+              saved
+                ? 'bg-green-500/20 border-green-500 text-green-400'
+                : 'bg-transparent border-white/30 text-white hover:border-white/50'
+            }`}
+          >
+            {saved ? (
+              <>
+                <Check className="w-[18px] h-[18px]" />
+                <span className="text-[15px] font-semibold">Saved!</span>
+              </>
+            ) : (
+              <>
+                <Bookmark className="w-[18px] h-[18px]" />
+                <span className="text-[15px] font-semibold">Save Template</span>
+              </>
+            )}
+          </button>
+        )}
+
+        {/* Use Template Button */}
         <button
           onClick={handleUseTemplate}
           className="w-full h-[52px] flex items-center justify-center gap-2 rounded-[26px] bg-[#8B5CF6]"

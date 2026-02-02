@@ -73,6 +73,9 @@ interface Template {
 
 const LOCATION_COLORS = ['#8B5CF6', '#14B8A6', '#F472B6', '#FCD34D', '#E879F9', '#A78BFA', '#22D3EE'];
 
+// Pixels per second for timeline (wider = more scrollable)
+const PIXELS_PER_SECOND = 80;
+
 type EditorTab = 'trim' | 'text' | 'audio';
 
 export default function TimelineEditor() {
@@ -80,6 +83,7 @@ export default function TimelineEditor() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
 
   const [template, setTemplate] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
@@ -130,8 +134,34 @@ export default function TimelineEditor() {
 
     data.locations.forEach((location, locIdx) => {
       const color = LOCATION_COLORS[locIdx % LOCATION_COLORS.length];
+      const isIntro = locIdx === 0 && location.locationName.toLowerCase().includes('intro');
 
-      location.scenes.forEach((scene) => {
+      location.scenes.forEach((scene, sceneIdx) => {
+        // For non-intro locations, the text overlay should be the LOCATION NAME
+        // NOT the scene.textOverlay which might contain the video title
+        let displayTextOverlay: string | undefined;
+        let displayTextStyle = scene.textStyle;
+
+        if (isIntro) {
+          // Intro scene - no text overlay (user adds their video)
+          displayTextOverlay = undefined;
+        } else {
+          // Location scenes - show location name like "📍 The Blue Temple"
+          displayTextOverlay = location.locationName;
+          displayTextStyle = scene.textStyle || {
+            fontFamily: 'Poppins',
+            fontSize: 18,
+            fontWeight: '600',
+            color: '#FFFFFF',
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            hasEmoji: true,
+            emoji: '📍',
+            emojiPosition: 'before',
+            position: 'bottom',
+            alignment: 'left',
+          };
+        }
+
         const clip: TimelineClip = {
           id: `clip-${location.locationId}-${scene.id}`,
           sceneId: scene.id,
@@ -140,23 +170,22 @@ export default function TimelineEditor() {
           color,
           startTime: currentStartTime,
           duration: scene.duration,
-          videoUrl: scene.userThumbnail ? undefined : undefined, // Will use blob URLs
-          thumbnail: scene.userThumbnail || scene.thumbnail,
-          textOverlay: scene.textOverlay || undefined,
-          textStyle: scene.textStyle,
+          // Only show user-uploaded thumbnails, not original TikTok thumbnails
+          thumbnail: scene.filled ? scene.userThumbnail : undefined,
+          textOverlay: displayTextOverlay,
+          textStyle: displayTextStyle,
           muted: false,
         };
         timelineClips.push(clip);
 
-        // Create text overlay if exists
-        if (scene.textOverlay) {
+        if (displayTextOverlay) {
           overlays.push({
             id: `text-${location.locationId}-${scene.id}`,
-            text: scene.textOverlay,
-            style: scene.textStyle || {
+            text: displayTextOverlay,
+            style: displayTextStyle || {
               fontFamily: 'Poppins',
-              fontSize: 22,
-              fontWeight: '700',
+              fontSize: 18,
+              fontWeight: '600',
               color: '#FFFFFF',
               hasEmoji: true,
               emoji: '📍',
@@ -179,7 +208,6 @@ export default function TimelineEditor() {
     setTotalDuration(currentStartTime);
   };
 
-  // Playback controls
   const togglePlayback = useCallback(() => {
     setIsPlaying(prev => !prev);
   }, []);
@@ -201,7 +229,6 @@ export default function TimelineEditor() {
     return () => clearInterval(interval);
   }, [isPlaying, totalDuration]);
 
-  // Find current clip based on playhead position
   useEffect(() => {
     const clipIndex = clips.findIndex(
       clip => currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration
@@ -211,22 +238,35 @@ export default function TimelineEditor() {
     }
   }, [currentTime, clips]);
 
-  // Get current text overlay
+  // Auto-scroll timeline to follow playhead
+  useEffect(() => {
+    if (timelineScrollRef.current && isPlaying) {
+      const playheadX = currentTime * PIXELS_PER_SECOND;
+      const scrollContainer = timelineScrollRef.current;
+      const containerWidth = scrollContainer.clientWidth;
+      const scrollLeft = scrollContainer.scrollLeft;
+
+      if (playheadX > scrollLeft + containerWidth - 50 || playheadX < scrollLeft + 50) {
+        scrollContainer.scrollTo({
+          left: Math.max(0, playheadX - containerWidth / 2),
+          behavior: 'smooth',
+        });
+      }
+    }
+  }, [currentTime, isPlaying]);
+
   const currentTextOverlay = textOverlays.find(
     overlay => currentTime >= overlay.startTime && currentTime < overlay.endTime
   );
 
-  // Timeline click to seek
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!timelineRef.current) return;
-    const rect = timelineRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const percentage = x / rect.width;
-    const newTime = percentage * totalDuration;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const scrollLeft = timelineScrollRef.current?.scrollLeft || 0;
+    const x = e.clientX - rect.left + scrollLeft;
+    const newTime = x / PIXELS_PER_SECOND;
     setCurrentTime(Math.max(0, Math.min(newTime, totalDuration)));
   };
 
-  // Delete selected clip
   const deleteSelectedClip = () => {
     if (selectedClip) {
       setClips(clips.filter(c => c.id !== selectedClip));
@@ -234,7 +274,6 @@ export default function TimelineEditor() {
     }
   };
 
-  // Delete selected text overlay
   const deleteSelectedTextOverlay = () => {
     if (selectedTextOverlay) {
       setTextOverlays(textOverlays.filter(t => t.id !== selectedTextOverlay));
@@ -242,7 +281,6 @@ export default function TimelineEditor() {
     }
   };
 
-  // Add new text overlay
   const addTextOverlay = () => {
     const newOverlay: TextOverlay = {
       id: `text-new-${Date.now()}`,
@@ -265,14 +303,12 @@ export default function TimelineEditor() {
     setEditingText(newOverlay);
   };
 
-  // Toggle clip mute
   const toggleClipMute = (clipId: string) => {
     setClips(clips.map(c =>
       c.id === clipId ? { ...c, muted: !c.muted } : c
     ));
   };
 
-  // Save and go to preview
   const handlePreview = () => {
     if (template) {
       const updatedTemplate = {
@@ -283,6 +319,9 @@ export default function TimelineEditor() {
           globalMuted,
           backgroundMusic,
         },
+        isEdit: true, // Mark as completed edit
+        isDraft: false, // Clear draft status
+        editedAt: new Date().toISOString(),
       };
       localStorage.setItem(`template_${params.id}`, JSON.stringify(updatedTemplate));
     }
@@ -293,6 +332,16 @@ export default function TimelineEditor() {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Generate time markers
+  const generateTimeMarkers = () => {
+    const markers = [];
+    const interval = 3; // Every 3 seconds
+    for (let t = 0; t <= totalDuration; t += interval) {
+      markers.push(t);
+    }
+    return markers;
   };
 
   if (loading || !template) {
@@ -307,337 +356,203 @@ export default function TimelineEditor() {
   }
 
   const currentClip = clips[currentClipIndex];
-  const playheadPosition = (currentTime / totalDuration) * 100;
+  const timelineWidth = totalDuration * PIXELS_PER_SECOND;
+  const playheadPosition = currentTime * PIXELS_PER_SECOND;
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+    <div className="h-screen bg-black flex flex-col overflow-hidden">
+      {/* Compact Header */}
+      <div className="flex items-center justify-between px-4 py-2 flex-shrink-0">
         <button
           onClick={() => router.back()}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10"
+          className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10"
         >
-          <ArrowLeft className="w-5 h-5 text-white" />
+          <ArrowLeft className="w-4 h-4 text-white" />
         </button>
-        <h1 className="text-white font-semibold">Edit Video</h1>
-        <div className="w-9" />
+        <h1 className="text-white font-semibold text-sm">Edit Video</h1>
+        <div className="w-8" />
       </div>
 
-      {/* Video Preview */}
-      <div className="flex-1 flex items-center justify-center p-4">
-        <div className="relative w-full max-w-[240px] aspect-[9/16] bg-[#1A1A2E] rounded-2xl overflow-hidden">
-          {/* Video/Thumbnail Display */}
+      {/* LARGE Video Preview - Takes most of the screen */}
+      <div className="flex-1 flex justify-center items-center px-4 py-2 min-h-0">
+        <div className="relative h-full max-h-[65vh] aspect-[9/16] bg-[#1A1A2E] rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+          {/* Check if current clip has user video */}
           {currentClip?.thumbnail ? (
             <div
               className="absolute inset-0 bg-cover bg-center"
               style={{ backgroundImage: `url(${currentClip.thumbnail})` }}
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#2D2640] to-[#1A1A2E]" />
-          )}
-
-          {/* Text Overlay Display */}
-          {currentTextOverlay && (
-            <div
-              className="absolute left-0 right-0 px-4 text-center"
-              style={{
-                top: currentTextOverlay.style.position === 'top' ? '10%' :
-                     currentTextOverlay.style.position === 'center' ? '50%' : 'auto',
-                bottom: currentTextOverlay.style.position === 'bottom' ? '15%' : 'auto',
-                transform: currentTextOverlay.style.position === 'center' ? 'translateY(-50%)' : 'none',
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: currentTextOverlay.style.fontFamily,
-                  fontSize: currentTextOverlay.style.fontSize * 0.7,
-                  fontWeight: currentTextOverlay.style.fontWeight,
-                  color: currentTextOverlay.style.color,
-                  textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-                }}
-              >
-                {currentTextOverlay.style.hasEmoji && currentTextOverlay.style.emoji &&
-                 (currentTextOverlay.style.emojiPosition === 'before' || currentTextOverlay.style.emojiPosition === 'both') && (
-                  <span className="mr-1">{currentTextOverlay.style.emoji}</span>
-                )}
-                {currentTextOverlay.text}
-                {currentTextOverlay.style.hasEmoji && currentTextOverlay.style.emoji &&
-                 (currentTextOverlay.style.emojiPosition === 'after' || currentTextOverlay.style.emojiPosition === 'both') && (
-                  <span className="ml-1">{currentTextOverlay.style.emoji}</span>
-                )}
-              </span>
+            /* Empty placeholder state */
+            <div className="absolute inset-0 bg-gradient-to-b from-[#2D2640] to-[#1A1A2E] flex flex-col items-center justify-center">
+              <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mb-4">
+                <Play className="w-10 h-10 text-white/30" />
+              </div>
+              <p className="text-white/40 text-sm font-medium">Add your video</p>
+              <p className="text-white/25 text-xs mt-2 px-6 text-center">
+                {currentClip?.locationName || 'Select a clip below'}
+              </p>
             </div>
           )}
 
-          {/* Play Button Overlay */}
+          {/* Gradient overlay for readability - only when has video */}
+          {currentClip?.thumbnail && (
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
+          )}
+
+          {/* Text Overlay - Styled like TikTok */}
+          {currentClip?.textOverlay && (
+            <div
+              className={`absolute left-0 right-0 px-4 flex ${
+                currentClip.textStyle?.position === 'top' ? 'top-6' :
+                currentClip.textStyle?.position === 'center' ? 'top-1/2 -translate-y-1/2' :
+                'bottom-16'
+              } ${
+                currentClip.textStyle?.alignment === 'center' ? 'justify-center' :
+                currentClip.textStyle?.alignment === 'right' ? 'justify-end' :
+                'justify-start'
+              }`}
+            >
+              <div
+                className="px-3 py-2 rounded-lg max-w-[90%]"
+                style={{
+                  backgroundColor: currentClip.textStyle?.backgroundColor || 'rgba(0,0,0,0.6)',
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: currentClip.textStyle?.fontFamily || 'Poppins',
+                    fontSize: currentClip.textStyle?.fontSize || 20,
+                    fontWeight: currentClip.textStyle?.fontWeight || '600',
+                    color: currentClip.textStyle?.color || '#FFFFFF',
+                    textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+                  }}
+                >
+                  {currentClip.textStyle?.hasEmoji && currentClip.textStyle?.emoji &&
+                    (currentClip.textStyle?.emojiPosition === 'before' || currentClip.textStyle?.emojiPosition === 'both') && (
+                    <span className="mr-1.5">{currentClip.textStyle.emoji}</span>
+                  )}
+                  {currentClip.textOverlay}
+                  {currentClip.textStyle?.hasEmoji && currentClip.textStyle?.emoji &&
+                    (currentClip.textStyle?.emojiPosition === 'after' || currentClip.textStyle?.emojiPosition === 'both') && (
+                    <span className="ml-1.5">{currentClip.textStyle.emoji}</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Play Button - Always visible for scrubbing */}
           <button
             onClick={togglePlayback}
-            className="absolute inset-0 flex items-center justify-center bg-black/20"
+            className="absolute inset-0 flex items-center justify-center"
           >
-            <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center transition-transform hover:scale-105">
               {isPlaying ? (
-                <Pause className="w-6 h-6 text-white" />
+                <Pause className="w-7 h-7 text-white" />
               ) : (
-                <Play className="w-6 h-6 text-white ml-1" />
+                <Play className="w-7 h-7 text-white ml-1" />
               )}
             </div>
           </button>
 
           {/* Time Display */}
-          <div className="absolute bottom-3 right-3 px-2 py-1 bg-black/60 rounded text-xs text-white">
-            {formatTime(currentTime)}
+          <div className="absolute bottom-4 right-4 px-2.5 py-1 bg-black/80 rounded-lg text-xs text-white font-medium">
+            {formatTime(currentTime)} / {formatTime(totalDuration)}
           </div>
+
+          {/* Current clip color indicator + name */}
+          {currentClip && (
+            <div
+              className="absolute bottom-4 left-4 px-2.5 py-1 rounded-lg text-xs text-white font-medium flex items-center gap-2"
+              style={{ backgroundColor: currentClip.color }}
+            >
+              <span>{currentClip.locationName.slice(0, 15)}</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Editor Tabs */}
-      <div className="flex justify-center gap-8 py-3 border-t border-white/10">
-        <button
-          onClick={() => setActiveTab('trim')}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'trim' ? 'text-white' : 'text-white/40'}`}
-        >
-          <Scissors className="w-5 h-5" />
-          <span className="text-xs">Trim</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('text')}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'text' ? 'text-white' : 'text-white/40'}`}
-        >
-          <Type className="w-5 h-5" />
-          <span className="text-xs">Text</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('audio')}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'audio' ? 'text-white' : 'text-white/40'}`}
-        >
-          <Music className="w-5 h-5" />
-          <span className="text-xs">Audio</span>
-        </button>
-      </div>
-
-      {/* Timeline Section */}
-      <div className="bg-[#1A1A2E] rounded-t-3xl px-4 pt-4 pb-6">
-        {/* Timeline Header */}
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs text-white/50">{formatTime(currentTime)} / {formatTime(totalDuration)}</span>
-          <div className="flex gap-2">
-            {selectedClip && (
-              <button
-                onClick={deleteSelectedClip}
-                className="p-2 rounded-lg bg-red-500/20 text-red-400"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-            {selectedTextOverlay && (
-              <button
-                onClick={deleteSelectedTextOverlay}
-                className="p-2 rounded-lg bg-red-500/20 text-red-400"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-            {activeTab === 'text' && (
-              <button
-                onClick={addTextOverlay}
-                className="px-3 py-1.5 rounded-lg bg-[#8B5CF6] text-white text-xs"
-              >
-                + Add Text
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Video Track Timeline */}
-        <div
-          ref={timelineRef}
-          className="relative h-12 bg-[#2D2640] rounded-lg mb-2 overflow-hidden cursor-pointer"
-          onClick={handleTimelineClick}
-        >
-          {/* Clips */}
-          <div className="absolute inset-0 flex">
-            {clips.map((clip) => {
-              const width = (clip.duration / totalDuration) * 100;
-              const left = (clip.startTime / totalDuration) * 100;
-              return (
-                <div
+      {/* Compact Bottom Section - Timeline + Preview */}
+      <div className="flex-shrink-0 bg-[#1A1A2E] rounded-t-2xl">
+        {/* Mini Timeline - Single scrollable row */}
+        <div className="px-3 py-3">
+          <div
+            ref={timelineScrollRef}
+            className="overflow-x-scroll pb-2 -mb-2"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
+            <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
+              {clips.map((clip, idx) => (
+                <button
                   key={clip.id}
-                  className={`absolute h-full rounded transition-all ${
-                    selectedClip === clip.id ? 'ring-2 ring-white' : ''
+                  onClick={() => {
+                    setSelectedClip(clip.id);
+                    setCurrentClipIndex(idx);
+                    setCurrentTime(clip.startTime);
+                  }}
+                  className={`relative flex-shrink-0 h-16 rounded-xl overflow-hidden transition-all ${
+                    selectedClip === clip.id || currentClipIndex === idx
+                      ? 'ring-2 ring-white scale-105'
+                      : 'opacity-80'
                   }`}
                   style={{
-                    left: `${left}%`,
-                    width: `${width}%`,
+                    width: Math.max(clip.duration * 25, 60),
                     backgroundColor: clip.color,
                   }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedClip(clip.id);
-                    setSelectedTextOverlay(null);
-                  }}
                 >
-                  {/* Clip thumbnail preview */}
                   {clip.thumbnail && (
                     <div
-                      className="absolute inset-0 opacity-60 bg-cover bg-center"
+                      className="absolute inset-0 opacity-50 bg-cover bg-center"
                       style={{ backgroundImage: `url(${clip.thumbnail})` }}
                     />
                   )}
-                  {/* Mute indicator */}
-                  {clip.muted && (
-                    <div className="absolute top-1 right-1">
-                      <VolumeX className="w-3 h-3 text-white/80" />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Playhead */}
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-white z-10"
-            style={{ left: `${playheadPosition}%` }}
-          >
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-white rounded-full" />
-          </div>
-        </div>
-
-        {/* Text Track */}
-        <div className="relative h-8 bg-[#2D2640]/50 rounded-lg mb-4 overflow-hidden">
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 px-2">
-            <Type className="w-3 h-3 text-white/30" />
-          </div>
-
-          {/* Text Overlays on Timeline */}
-          {textOverlays.map((overlay) => {
-            const width = ((overlay.endTime - overlay.startTime) / totalDuration) * 100;
-            const left = (overlay.startTime / totalDuration) * 100;
-            return (
-              <div
-                key={overlay.id}
-                className={`absolute h-6 top-1 rounded cursor-pointer flex items-center px-2 ${
-                  selectedTextOverlay === overlay.id
-                    ? 'bg-[#8B5CF6] ring-2 ring-white'
-                    : 'bg-[#8B5CF6]/60'
-                }`}
-                style={{
-                  left: `${left}%`,
-                  width: `${Math.max(width, 5)}%`,
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedTextOverlay(overlay.id);
-                  setSelectedClip(null);
-                  if (activeTab === 'text') {
-                    setEditingText(overlay);
-                  }
-                }}
-              >
-                <span className="text-[10px] text-white truncate">{overlay.text}</span>
-                <GripHorizontal className="w-3 h-3 text-white/50 ml-auto flex-shrink-0" />
-              </div>
-            );
-          })}
-
-          {/* Playhead for text track */}
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-white/50 z-10"
-            style={{ left: `${playheadPosition}%` }}
-          />
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === 'trim' && selectedClip && (
-          <div className="bg-[#2D2640] rounded-xl p-3 mb-4">
-            <p className="text-xs text-white/50 mb-2">Selected: {clips.find(c => c.id === selectedClip)?.locationName}</p>
-            <div className="flex gap-2">
-              <button className="flex-1 py-2 rounded-lg bg-[#8B5CF6]/20 text-[#8B5CF6] text-xs">
-                Split at Playhead
-              </button>
-              <button
-                onClick={() => toggleClipMute(selectedClip)}
-                className="px-4 py-2 rounded-lg bg-white/10 text-white text-xs flex items-center gap-1"
-              >
-                {clips.find(c => c.id === selectedClip)?.muted ? (
-                  <>
-                    <VolumeX className="w-3 h-3" /> Unmute
-                  </>
-                ) : (
-                  <>
-                    <Volume2 className="w-3 h-3" /> Mute
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'text' && editingText && (
-          <div className="bg-[#2D2640] rounded-xl p-3 mb-4">
-            <input
-              type="text"
-              value={editingText.text}
-              onChange={(e) => {
-                const updated = { ...editingText, text: e.target.value };
-                setEditingText(updated);
-                setTextOverlays(textOverlays.map(t => t.id === editingText.id ? updated : t));
-              }}
-              className="w-full bg-[#1A1A2E] rounded-lg px-3 py-2 text-sm text-white mb-2 focus:outline-none focus:ring-1 focus:ring-[#8B5CF6]"
-            />
-            <div className="flex gap-2">
-              {['top', 'center', 'bottom'].map(pos => (
-                <button
-                  key={pos}
-                  onClick={() => {
-                    const updated = {
-                      ...editingText,
-                      style: { ...editingText.style, position: pos as 'top' | 'center' | 'bottom' }
-                    };
-                    setEditingText(updated);
-                    setTextOverlays(textOverlays.map(t => t.id === editingText.id ? updated : t));
-                  }}
-                  className={`flex-1 py-1.5 rounded-lg text-xs capitalize ${
-                    editingText.style.position === pos
-                      ? 'bg-[#8B5CF6] text-white'
-                      : 'bg-[#1A1A2E] text-white/60'
-                  }`}
-                >
-                  {pos}
+                  <div className="relative h-full flex flex-col justify-end p-2">
+                    <span className="text-[9px] text-white font-semibold drop-shadow-lg line-clamp-1">
+                      {clip.locationName.slice(0, 12)}
+                    </span>
+                  </div>
                 </button>
               ))}
             </div>
           </div>
-        )}
+        </div>
 
-        {activeTab === 'audio' && (
-          <div className="bg-[#2D2640] rounded-xl p-3 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-white/70">Original Audio</span>
-              <button
-                onClick={() => setGlobalMuted(!globalMuted)}
-                className={`px-3 py-1.5 rounded-lg text-xs ${
-                  globalMuted ? 'bg-red-500/20 text-red-400' : 'bg-[#8B5CF6]/20 text-[#8B5CF6]'
-                }`}
-              >
-                {globalMuted ? 'Muted' : 'On'}
-              </button>
-            </div>
-            <div className="border-t border-white/10 pt-3">
-              <span className="text-xs text-white/50">Background Music</span>
-              <p className="text-xs text-white/30 mt-1">Coming soon - Add music from library</p>
-            </div>
-          </div>
-        )}
+        {/* Editor Tabs - Inline */}
+        <div className="flex items-center justify-center gap-6 px-3 py-1 border-t border-white/5">
+          <button
+            onClick={() => setActiveTab('trim')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${activeTab === 'trim' ? 'bg-white/10 text-white' : 'text-white/40'}`}
+          >
+            <Scissors className="w-4 h-4" />
+            <span className="text-[10px]">Trim</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('text')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${activeTab === 'text' ? 'bg-white/10 text-white' : 'text-white/40'}`}
+          >
+            <Type className="w-4 h-4" />
+            <span className="text-[10px]">Text</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('audio')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${activeTab === 'audio' ? 'bg-white/10 text-white' : 'text-white/40'}`}
+          >
+            <Music className="w-4 h-4" />
+            <span className="text-[10px]">Audio</span>
+          </button>
+        </div>
 
-        {/* Preview Button */}
-        <button
-          onClick={handlePreview}
-          className="w-full h-12 flex items-center justify-center gap-2 rounded-xl bg-[#8B5CF6] text-white font-semibold"
-        >
-          <Play className="w-4 h-4" />
-          Preview
-        </button>
+        {/* Preview Button - Fixed at bottom */}
+        <div className="px-4 pb-6 pt-2">
+          <button
+            onClick={handlePreview}
+            className="w-full h-12 flex items-center justify-center gap-2 rounded-full bg-[#8B5CF6] text-white font-semibold"
+          >
+            <Play className="w-4 h-4" />
+            Preview
+          </button>
+        </div>
       </div>
     </div>
   );
