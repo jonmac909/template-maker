@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Sparkles, Check, Clock, ChevronDown, ChevronUp, Pencil, X, Type, Save, Plus, RefreshCw, Loader2, Image as ImageIcon, Wand2 } from 'lucide-react';
+import { ArrowLeft, Sparkles, Check, Clock, ChevronDown, ChevronUp, Pencil, X, Type, Save, Plus, Loader2, Image as ImageIcon } from 'lucide-react';
 import { getFontNames, addFontsToLibrary, initializeFontLibrary, trackFontUsage, addCustomFont, loadGoogleFonts } from '../../../lib/fontLibrary';
 
 interface TextStyle {
@@ -924,44 +924,9 @@ export default function ReelEditor() {
         </button>
       </div>
 
-      {/* Video Info - Editable Title */}
-      <div className="px-4 py-3 border-b border-white/10">
-        {editingTitle ? (
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={videoTitle}
-              onChange={(e) => setVideoTitle(e.target.value)}
-              className="flex-1 bg-[#2D2640] rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') saveVideoTitle();
-                if (e.key === 'Escape') setEditingTitle(false);
-              }}
-            />
-            <button
-              onClick={saveVideoTitle}
-              className="px-3 py-2 rounded-lg bg-[#8B5CF6] text-white text-xs font-semibold"
-            >
-              Save
-            </button>
-            <button
-              onClick={() => setEditingTitle(false)}
-              className="px-3 py-2 rounded-lg bg-white/10 text-white text-xs"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setEditingTitle(true)}
-            className="flex items-center gap-2 group w-full text-left"
-          >
-            <p className="text-sm font-medium text-white line-clamp-1 flex-1">{videoTitle}</p>
-            <Pencil className="w-3.5 h-3.5 text-white/30 group-hover:text-white/60 transition-colors" />
-          </button>
-        )}
-        <div className="flex items-center gap-3 mt-1">
+      {/* Video Stats */}
+      <div className="px-4 py-2 border-b border-white/10">
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
             <Clock className="w-3 h-3 text-white/50" />
             <span className="text-xs text-white/50">{template.totalDuration}s total</span>
@@ -974,33 +939,34 @@ export default function ReelEditor() {
       {/* Locations List */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
         <div className="space-y-3">
-          {/* Thumbnail Section - Always at top */}
+          {/* Thumbnail, Title & Caption Section - Always at top */}
           {template?.videoInfo?.thumbnail && (
             <div className="bg-[#1A1A2E] rounded-2xl overflow-hidden">
-              {/* Thumbnail Header */}
+              {/* Header */}
               <div className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#8B5CF6]">
                     <ImageIcon className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-white">Thumbnail</h3>
-                    <p className="text-xs text-white/50">Cover image for your reel</p>
+                    <h3 className="text-sm font-semibold text-white">Thumbnail, Title & Caption</h3>
+                    <p className="text-xs text-white/50">Cover image and intro text</p>
                   </div>
                 </div>
               </div>
 
-              {/* Thumbnail Content */}
-              <div className="px-4 pb-4">
-                <div className="bg-[#2D2640] rounded-xl p-4">
-                  <div className="flex gap-4">
+              {/* Content */}
+              <div className="px-4 pb-4 space-y-3">
+                {/* Thumbnail + Extract */}
+                <div className="bg-[#2D2640] rounded-xl p-3">
+                  <div className="flex gap-3">
                     {/* Thumbnail preview */}
                     <div
-                      className="w-28 h-36 rounded-lg bg-cover bg-center flex-shrink-0 border border-white/10"
+                      className="w-24 h-32 rounded-lg bg-cover bg-center flex-shrink-0 border border-white/10"
                       style={{ backgroundImage: `url(${template.videoInfo.thumbnail})` }}
                     />
-                    {/* Actions */}
-                    <div className="flex-1 flex flex-col gap-2">
+                    {/* Extract button */}
+                    <div className="flex-1 flex flex-col justify-center gap-2">
                       <button
                         onClick={handleReanalyze}
                         disabled={reanalyzing}
@@ -1015,18 +981,48 @@ export default function ReelEditor() {
                           {reanalyzing ? 'Reading...' : 'Extract Text'}
                         </span>
                       </button>
-                      <button
-                        onClick={() => alert('Generate thumbnail coming soon!')}
-                        className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#2D2640] border border-white/20 hover:border-[#8B5CF6]/50 transition-colors"
-                      >
-                        <Wand2 className="w-4 h-4 text-white/70" />
-                        <span className="text-sm font-medium text-white/70">Generate Thumbnail</span>
-                      </button>
                       {reanalyzeStatus && (
                         <p className="text-xs text-[#8B5CF6] text-center">{reanalyzeStatus}</p>
                       )}
+                      <p className="text-[10px] text-white/30 text-center">
+                        AI reads the text from thumbnail
+                      </p>
                     </div>
                   </div>
+                </div>
+
+                {/* Title */}
+                <div className="bg-[#2D2640] rounded-xl p-3">
+                  <p className="text-[10px] text-white/50 mb-1.5">Title</p>
+                  {editingTitle ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={videoTitle}
+                        onChange={(e) => setVideoTitle(e.target.value)}
+                        className="flex-1 bg-[#1A1A2E] rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveVideoTitle();
+                          if (e.key === 'Escape') setEditingTitle(false);
+                        }}
+                      />
+                      <button
+                        onClick={saveVideoTitle}
+                        className="px-3 py-2 rounded-lg bg-[#8B5CF6] text-white text-xs font-semibold"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setEditingTitle(true)}
+                      className="flex items-center gap-2 w-full text-left"
+                    >
+                      <p className="text-sm text-white flex-1 line-clamp-2">{videoTitle}</p>
+                      <Pencil className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
