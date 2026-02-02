@@ -108,6 +108,10 @@ See `.claude/skills/yt-dlp-video-extraction.md` for patterns.
 ### Rendered Video Export
 - MP4 via FFmpeg.wasm (no audio - add music in TikTok later)
 
+## Important: Reading Thumbnails
+- To read/analyze thumbnail images, use **OAuth token** - NOT the Anthropic API
+- The Anthropic API is not required for thumbnail text extraction
+
 ## Known Issues
 - TikTok thumbnails show video TITLE text, not intro content
 - Third-party APIs (TikWM, Cobalt) may be rate-limited or down
