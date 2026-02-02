@@ -88,7 +88,11 @@ export default function ReelPreview() {
     router.push('/');
   };
 
-  const handleEdit = () => {
+  const handleEditTimeline = () => {
+    router.push(`/timeline/reel/${params.id}`);
+  };
+
+  const handleEditSlots = () => {
     router.push(`/editor/reel/${params.id}`);
   };
 
@@ -159,12 +163,12 @@ export default function ReelPreview() {
 
       {/* Status Section */}
       <div className="flex flex-col items-center gap-4 px-4 py-4">
-        <div className="flex items-center gap-2 px-4 py-2 rounded-[20px] bg-[#8B5CF6]">
+        <div className="flex items-center gap-2 px-4 py-2 rounded-[20px] bg-[#14B8A6]">
           <CircleCheck className="w-[18px] h-[18px] text-white" />
-          <span className="text-sm font-semibold text-white">Template Ready!</span>
+          <span className="text-sm font-semibold text-white">Video Ready!</span>
         </div>
         <p className="text-sm text-[#888888] text-center">
-          Your {locationCount}-location video template is ready to use
+          Your template has been assembled with all<br />your media and captions
         </p>
       </div>
 
@@ -223,14 +227,23 @@ export default function ReelPreview() {
           <span className="text-base font-medium text-white">Save to Library</span>
         </button>
 
-        {/* Edit Button */}
-        <button
-          onClick={handleEdit}
-          className="w-full h-11 flex items-center justify-center gap-2"
-        >
-          <Pencil className="w-[18px] h-[18px] text-[#888888]" />
-          <span className="text-sm text-[#888888]">Edit Scenes</span>
-        </button>
+        {/* Edit Buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleEditTimeline}
+            className="flex-1 h-11 flex items-center justify-center gap-2"
+          >
+            <Film className="w-[18px] h-[18px] text-[#888888]" />
+            <span className="text-sm text-[#888888]">Edit Timeline</span>
+          </button>
+          <button
+            onClick={handleEditSlots}
+            className="flex-1 h-11 flex items-center justify-center gap-2"
+          >
+            <Pencil className="w-[18px] h-[18px] text-[#888888]" />
+            <span className="text-sm text-[#888888]">Edit Slots</span>
+          </button>
+        </div>
       </div>
     </div>
   );

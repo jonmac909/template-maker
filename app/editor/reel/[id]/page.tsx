@@ -274,7 +274,7 @@ export default function ReelEditor() {
       const updatedTemplate = { ...template, locations };
       localStorage.setItem(`template_${params.id}`, JSON.stringify(updatedTemplate));
     }
-    router.push(`/preview/reel/${params.id}`);
+    router.push(`/timeline/reel/${params.id}`);
   };
 
   const handleSaveDraft = () => {
