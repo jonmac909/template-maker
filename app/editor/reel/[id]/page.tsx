@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Sparkles, Check, Video, Clock, ChevronDown, ChevronUp, Pencil, X, Type, Save, Plus } from 'lucide-react';
+import { ArrowLeft, Sparkles, Check, Video, Clock, ChevronDown, ChevronUp, Pencil, X, Type, Save, Plus, RefreshCw, Loader2 } from 'lucide-react';
 import { getFontNames, addFontsToLibrary, initializeFontLibrary, trackFontUsage, addCustomFont, loadGoogleFonts } from '../../../lib/fontLibrary';
 
 interface TextStyle {
@@ -157,6 +157,8 @@ export default function ReelEditor() {
   const [videoTitle, setVideoTitle] = useState('');
   const [titleTextStyle, setTitleTextStyle] = useState<TextStyle>(DEFAULT_TEXT_STYLE);
   const [locationTextStyle, setLocationTextStyle] = useState<TextStyle>(DEFAULT_TEXT_STYLE);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [reanalyzeStatus, setReanalyzeStatus] = useState('');
 
   useEffect(() => {
     // Initialize font library
@@ -330,6 +332,103 @@ export default function ReelEditor() {
       localStorage.setItem(`template_${params.id}`, JSON.stringify(updatedTemplate));
     }
     setEditingTitle(false);
+  };
+
+  // Re-analyze thumbnail to extract intro text and fonts
+  const handleReanalyze = async () => {
+    if (!template?.videoInfo?.thumbnail) {
+      setReanalyzeStatus('No thumbnail available');
+      setTimeout(() => setReanalyzeStatus(''), 3000);
+      return;
+    }
+
+    setReanalyzing(true);
+    setReanalyzeStatus('Analyzing thumbnail with AI...');
+
+    try {
+      const response = await fetch('/api/analyze-frames', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          thumbnailUrl: template.videoInfo.thumbnail,
+          frames: [],
+          videoInfo: {
+            title: template.videoInfo.title || 'Unknown',
+            author: template.videoInfo.author || 'Unknown',
+            duration: template.videoInfo.duration || 30,
+          },
+          expectedLocations: locations.length || 5,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Analysis failed');
+      }
+
+      const result = await response.json();
+      console.log('Re-analysis result:', result);
+
+      if (result.analysis) {
+        const hookText = result.analysis.extractedText?.hookText;
+        const extractedFonts = result.analysis.extractedFonts;
+
+        console.log('Extracted hook text:', hookText);
+        console.log('Extracted fonts:', extractedFonts);
+
+        if (hookText || extractedFonts) {
+          // Update intro scene with extracted hook text
+          const updatedLocations = locations.map(loc => {
+            if (loc.locationId === 0 && hookText) {
+              return {
+                ...loc,
+                scenes: loc.scenes.map(scene => ({
+                  ...scene,
+                  textOverlay: hookText,
+                  textStyle: extractedFonts?.titleFont
+                    ? createStyleFromExtractedFont(extractedFonts.titleFont, true)
+                    : scene.textStyle,
+                })),
+              };
+            }
+            return loc;
+          });
+
+          setLocations(updatedLocations);
+
+          // Update font styles
+          if (extractedFonts?.titleFont) {
+            const newTitleStyle = createStyleFromExtractedFont(extractedFonts.titleFont, true);
+            setTitleTextStyle(newTitleStyle);
+            loadGoogleFonts([newTitleStyle.fontFamily]);
+          }
+          if (extractedFonts?.locationFont) {
+            const newLocStyle = createStyleFromExtractedFont(extractedFonts.locationFont, false);
+            setLocationTextStyle(newLocStyle);
+            loadGoogleFonts([newLocStyle.fontFamily]);
+          }
+
+          // Save to localStorage
+          const updatedTemplate = {
+            ...template,
+            locations: updatedLocations,
+            extractedFonts,
+            deepAnalyzed: true,
+          };
+          localStorage.setItem(`template_${params.id}`, JSON.stringify(updatedTemplate));
+          setTemplate(updatedTemplate as Template);
+
+          setReanalyzeStatus(`Extracted: "${hookText?.slice(0, 30)}..."`);
+        } else {
+          setReanalyzeStatus('No text found in thumbnail');
+        }
+      }
+    } catch (error) {
+      console.error('Re-analysis failed:', error);
+      setReanalyzeStatus('Analysis failed - try again');
+    } finally {
+      setReanalyzing(false);
+      setTimeout(() => setReanalyzeStatus(''), 4000);
+    }
   };
 
   const toggleLocation = (locationId: number) => {
@@ -872,6 +971,26 @@ export default function ReelEditor() {
                     </button>
                   </div>
                 </div>
+
+                {/* Re-analyze button for Intro */}
+                {location.locationId === 0 && location.expanded && (
+                  <div className="px-4 pb-2">
+                    <button
+                      onClick={handleReanalyze}
+                      disabled={reanalyzing}
+                      className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-[#8B5CF6]/20 border border-[#8B5CF6]/30 hover:bg-[#8B5CF6]/30 transition-colors disabled:opacity-50"
+                    >
+                      {reanalyzing ? (
+                        <Loader2 className="w-4 h-4 text-[#8B5CF6] animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4 text-[#8B5CF6]" />
+                      )}
+                      <span className="text-xs font-medium text-[#8B5CF6]">
+                        {reanalyzing ? 'Analyzing...' : reanalyzeStatus || 'Re-analyze thumbnail for intro text'}
+                      </span>
+                    </button>
+                  </div>
+                )}
 
                 {/* Scenes (Expanded) */}
                 {location.expanded && (
