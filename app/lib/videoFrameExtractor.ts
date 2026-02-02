@@ -112,8 +112,10 @@ export function generateFrameTimestamps(
 
   const timestamps: number[] = [];
 
-  // Intro frame - slightly after start to catch title card
-  timestamps.push(Math.min(introFrameAt, duration * 0.1));
+  // CRITICAL: Extract at 0.0s AND slightly later to catch title cards
+  // Title overlays often appear right at the start or fade in within first 0.5s
+  timestamps.push(0.1); // Very first frame - often has title text (0.1s to avoid potential blank)
+  timestamps.push(Math.min(introFrameAt, duration * 0.1)); // Slightly later to catch animated text
 
   // Content frames - evenly distributed through the middle
   const contentStart = duration * 0.15;

@@ -52,52 +52,58 @@ export async function POST(request: NextRequest) {
     }
 
     // Add analysis prompt
-    const prompt = `You are analyzing ${frames.length} frames extracted from a TikTok video.
+    const prompt = `You are analyzing ${frames.length} frames extracted from a TikTok video. The FIRST TWO FRAMES are from the intro/title card.
 
 VIDEO INFO:
 - Author: @${videoInfo.author}
 - Duration: ${videoInfo.duration} seconds
 - Expected locations: approximately ${expectedLocations}
 
+CRITICAL - EXTRACTING THE INTRO/HOOK TEXT:
+The FIRST TWO FRAMES (at 0.1s and 0.5s) show the INTRO/TITLE CARD.
+Look for the BIG TEXT - this is usually something like:
+- "10 Dreamiest Places in Northern Thailand"
+- "5 Must-Visit Cafes in Bangkok"
+- "Top 10 Hidden Gems"
+
+This text is the HOOK - the main title of the video. READ IT EXACTLY as it appears.
+
 ANALYZE EACH FRAME AND EXTRACT:
 
-1. INTRO FRAME (usually first frame):
-   - Read the EXACT hook/title text (e.g., "10 Dreamiest Places in Northern Thailand")
-   - Identify the font style (script/cursive, serif, sans-serif, display)
-   - Note colors and positioning
+1. INTRO/TITLE CARD (FIRST TWO FRAMES - THIS IS THE MOST IMPORTANT):
+   - Read the EXACT BIG TEXT overlaid on the video
+   - This is usually in large, stylized font
+   - Examples: "10 Dreamiest Places in Northern Thailand", "Best Cafes in Tokyo"
+   - Copy it EXACTLY including emojis if any
 
-2. LOCATION FRAMES:
+2. LOCATION FRAMES (middle frames):
    - Read EXACT location names (e.g., "📍 The Blue Temple", "1. Cafe Name")
    - Note if names are numbered (1., 2., 3.)
-   - Identify font styles for location text
 
 3. FONTS & STYLING:
-   - Title/Hook font: Is it elegant script? Bold display? Clean sans-serif?
-   - Location text font: Same or different from title?
-   - Describe what you see: "flowing cursive script", "bold condensed uppercase", etc.
+   - Describe the title font style
 
-4. OUTRO FRAME (usually last frame):
-   - Any call-to-action text ("Follow for more!")
-   - Social media handles
+4. OUTRO FRAME (last frame):
+   - Any call-to-action text
 
 Respond with ONLY valid JSON:
 
 {
   "extractedText": {
-    "hookText": "EXACT intro text from first frame or null if not visible",
-    "locationNames": ["EXACT location names in order they appear"],
-    "outroText": "CTA text if visible or null"
+    "hookText": "THE EXACT BIG TEXT FROM THE FIRST FRAMES - this is critical!",
+    "locationNames": ["location names in order"],
+    "outroText": "CTA text or null"
   },
   "extractedFonts": {
     "titleFont": {
       "style": "script|serif|sans-serif|display",
       "weight": "normal|bold",
-      "description": "DESCRIBE what you see - e.g., 'elegant flowing script with decorative flourishes'"
+      "description": "describe the title font"
     },
     "locationFont": {
       "style": "script|serif|sans-serif|display",
       "weight": "normal|bold",
-      "description": "e.g., 'clean rounded sans-serif with emoji prefix'"
+      "description": "describe location text font"
     }
   },
   "visualStyle": {
@@ -109,19 +115,19 @@ Respond with ONLY valid JSON:
     {
       "locationId": 0,
       "locationName": "Intro",
-      "textOverlay": "EXACT hook text or null",
+      "textOverlay": "THE EXACT HOOK TEXT FROM FRAME 1 or 2",
       "timestamp": 0
     },
     {
       "locationId": 1,
-      "locationName": "EXACT name from frame",
-      "textOverlay": "1. EXACT name or null",
+      "locationName": "location name",
+      "textOverlay": "1. location name or null",
       "timestamp": 2
     }
   ]
 }
 
-Create entries for each distinct location you can identify. If you can't read text clearly, set to null.`;
+IMPORTANT: The hookText and locations[0].textOverlay MUST be the actual text you see in the first frames. Do not make it up.`;
 
     messageContent.push({ type: 'text', text: prompt });
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { X, Sparkles, Clock, MapPin, Film, Type, Bookmark, Check, Scan, Loader2 } from 'lucide-react';
+import { X, Sparkles, Clock, MapPin, Film, Type, Check, Loader2 } from 'lucide-react';
 import { extractVideoFrames, generateFrameTimestamps, isBrowser } from '../../lib/videoFrameExtractor';
 
 interface TextStyle {
@@ -83,6 +83,21 @@ export default function TemplateBreakdown() {
       handleDeepAnalyze();
     }
   }, [template?.id, template?.deepAnalyzed]);
+
+  // Auto-save when deep analysis completes
+  useEffect(() => {
+    if (template?.deepAnalyzed && template?.isDraft) {
+      // Auto-save the template after deep analysis
+      const savedTemplate = {
+        ...template,
+        isDraft: false,
+        isEdit: false,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(`template_${params.id}`, JSON.stringify(savedTemplate));
+      setTemplate(savedTemplate);
+    }
+  }, [template?.deepAnalyzed]);
 
   const fetchTemplate = async () => {
     try {
@@ -311,24 +326,7 @@ export default function TemplateBreakdown() {
         >
           <X className="w-5 h-5 text-white" />
         </button>
-        <div className="flex items-center gap-2">
-          {template.isDraft && (
-            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 text-[10px] font-semibold uppercase">
-              Draft
-            </span>
-          )}
-          {(template as any).extractionMethod === 'fallback-database' && (
-            <span className="px-2 py-0.5 rounded-md bg-red-500/20 text-red-400 text-[10px] font-semibold uppercase">
-              OCR Failed
-            </span>
-          )}
-          {(template as any).extractionMethod === 'claude-vision' && (
-            <span className="px-2 py-0.5 rounded-md bg-green-500/20 text-green-400 text-[10px] font-semibold uppercase">
-              OCR OK
-            </span>
-          )}
-          <h2 className="text-[15px] font-semibold text-white">Template Preview</h2>
-        </div>
+        <h2 className="text-[15px] font-semibold text-white">Template Preview</h2>
         <div className="w-9 h-9" />
       </div>
 
@@ -426,78 +424,30 @@ export default function TemplateBreakdown() {
 
       {/* Bottom Area - Buttons */}
       <div className="px-4 pt-4 pb-8 space-y-3">
-        {/* Analysis Status */}
-        {analysisStatus && (
-          <div className="text-center py-2 px-4 rounded-xl bg-[#8B5CF6]/20 border border-[#8B5CF6]/30">
-            <p className="text-sm text-[#8B5CF6]">{analysisStatus}</p>
+        {/* Analysis Status - shown during auto deep analysis */}
+        {(deepAnalyzing || analysisStatus) && (
+          <div className="text-center py-3 px-4 rounded-xl bg-[#8B5CF6]/20 border border-[#8B5CF6]/30">
+            <div className="flex items-center justify-center gap-2">
+              {deepAnalyzing && <Loader2 className="w-4 h-4 animate-spin text-[#8B5CF6]" />}
+              <p className="text-sm text-[#8B5CF6]">{analysisStatus || 'Analyzing video...'}</p>
+            </div>
           </div>
-        )}
-
-        {/* Deep Analyze Button - Extract frames from video for better analysis */}
-        {template.videoInfo?.videoUrl && !template.deepAnalyzed && (
-          <button
-            onClick={handleDeepAnalyze}
-            disabled={deepAnalyzing}
-            className={`w-full h-[48px] flex items-center justify-center gap-2 rounded-[24px] border-2 transition-all ${
-              deepAnalyzing
-                ? 'bg-[#8B5CF6]/20 border-[#8B5CF6] text-[#8B5CF6]'
-                : 'bg-transparent border-cyan-500/50 text-cyan-400 hover:border-cyan-400'
-            }`}
-          >
-            {deepAnalyzing ? (
-              <>
-                <Loader2 className="w-[18px] h-[18px] animate-spin" />
-                <span className="text-[14px] font-medium">Analyzing...</span>
-              </>
-            ) : (
-              <>
-                <Scan className="w-[18px] h-[18px]" />
-                <span className="text-[14px] font-medium">Deep Analyze Video (Extract Frames)</span>
-              </>
-            )}
-          </button>
-        )}
-
-        {/* Deep Analyzed Badge */}
-        {template.deepAnalyzed && (
-          <div className="flex items-center justify-center gap-2 py-2 text-green-400">
-            <Check className="w-4 h-4" />
-            <span className="text-sm font-medium">Deep analysis complete</span>
-          </div>
-        )}
-
-        {/* Save Template Button - Show if it's a draft */}
-        {template.isDraft && (
-          <button
-            onClick={handleSaveTemplate}
-            disabled={saved}
-            className={`w-full h-[52px] flex items-center justify-center gap-2 rounded-[26px] border-2 transition-all ${
-              saved
-                ? 'bg-green-500/20 border-green-500 text-green-400'
-                : 'bg-transparent border-white/30 text-white hover:border-white/50'
-            }`}
-          >
-            {saved ? (
-              <>
-                <Check className="w-[18px] h-[18px]" />
-                <span className="text-[15px] font-semibold">Saved!</span>
-              </>
-            ) : (
-              <>
-                <Bookmark className="w-[18px] h-[18px]" />
-                <span className="text-[15px] font-semibold">Save Template</span>
-              </>
-            )}
-          </button>
         )}
 
         {/* Use Template Button */}
         <button
           onClick={handleUseTemplate}
-          className="w-full h-[52px] flex items-center justify-center gap-2 rounded-[26px] bg-[#8B5CF6]"
+          disabled={deepAnalyzing}
+          className={`w-full h-[52px] flex items-center justify-center gap-2 rounded-[26px] transition-all ${
+            deepAnalyzing
+              ? 'bg-[#8B5CF6]/50 cursor-not-allowed'
+              : 'bg-[#8B5CF6]'
+          }`}
         >
           <Sparkles className="w-[18px] h-[18px] text-white" />
-          <span className="text-[15px] font-semibold text-white">Use This Template</span>
+          <span className="text-[15px] font-semibold text-white">
+            {deepAnalyzing ? 'Analyzing...' : 'Use This Template'}
+          </span>
         </button>
       </div>
     </div>
