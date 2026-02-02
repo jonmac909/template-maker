@@ -384,25 +384,26 @@ export default function ReelEditor() {
     setReanalyzeStatus('Converting thumbnail...');
 
     try {
-      // Convert the displayed thumbnail to base64 client-side
-      // This works because the browser has the image cached/displayed
-      const thumbnailBase64 = await imageUrlToBase64(template.videoInfo.thumbnail);
+      // Try client-side conversion first, fall back to server-side fetch
+      let thumbnailBase64 = await imageUrlToBase64(template.videoInfo.thumbnail);
+      let useServerFetch = false;
 
       if (!thumbnailBase64) {
-        setReanalyzeStatus('Could not capture thumbnail - try refreshing');
-        setTimeout(() => setReanalyzeStatus(''), 4000);
-        setReanalyzing(false);
-        return;
+        console.log('Client-side conversion failed, will use server-side fetch');
+        useServerFetch = true;
+      } else {
+        console.log('Thumbnail converted to base64, length:', thumbnailBase64.length);
       }
 
-      console.log('Thumbnail converted to base64, length:', thumbnailBase64.length);
       setReanalyzeStatus('Sending to AI for analysis...');
 
       const response = await fetch('/api/analyze-frames', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          thumbnailBase64, // Send base64 directly instead of URL
+          // Send base64 if we have it, otherwise send URL for server to fetch
+          thumbnailBase64: useServerFetch ? undefined : thumbnailBase64,
+          thumbnailUrl: useServerFetch ? template.videoInfo.thumbnail : undefined,
           frames: [],
           videoInfo: {
             title: '', // Don't send title - we want Claude to READ the image
