@@ -222,6 +222,7 @@ Respond with ONLY this JSON:
 
     // Call Claude Vision API via OpenRouter gateway
     console.log('Calling OpenRouter API with Claude model...');
+    console.log('API Key present:', !!OPENROUTER_API_KEY, OPENROUTER_API_KEY ? `(${OPENROUTER_API_KEY.substring(0, 10)}...)` : '');
 
     // Convert message content to OpenRouter format
     const openRouterContent = messageContent.map(item => {
@@ -247,7 +248,7 @@ Respond with ONLY this JSON:
         'X-Title': 'Template Maker'
       },
       body: JSON.stringify({
-        model: 'anthropic/claude-sonnet-4',
+        model: 'anthropic/claude-3.5-sonnet',
         max_tokens: 4096,
         messages: [{
           role: 'user',
@@ -258,8 +259,8 @@ Respond with ONLY this JSON:
 
     if (!openRouterResponse.ok) {
       const errorData = await openRouterResponse.json().catch(() => ({}));
-      console.error('OpenRouter API error:', openRouterResponse.status, errorData);
-      throw new Error(`OpenRouter API error: ${openRouterResponse.status} - ${errorData.error?.message || 'Unknown error'}`);
+      console.error('OpenRouter API error:', openRouterResponse.status, JSON.stringify(errorData));
+      throw new Error(`OpenRouter API error: ${openRouterResponse.status} - ${JSON.stringify(errorData)}`);
     }
 
     const openRouterData = await openRouterResponse.json();
