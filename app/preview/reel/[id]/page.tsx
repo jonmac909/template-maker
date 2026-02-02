@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Download, Save, CircleCheck, Play, Clock, MapPin, Film, Smartphone } from 'lucide-react';
+import { ArrowLeft, Download, Save, CircleCheck, Play, Clock, MapPin, Film, Smartphone, FileVideo } from 'lucide-react';
 
 interface Template {
   id: string;
@@ -94,6 +94,65 @@ export default function ReelPreview() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `capcut-template-${params.id}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportFinalCut = () => {
+    if (!template) return;
+
+    // Calculate total duration in frames (assuming 30fps)
+    const fps = 30;
+    const totalFrames = Math.round(template.totalDuration * fps);
+
+    // Build clips data
+    let currentFrame = 0;
+    const clips: Array<{ name: string; startFrame: number; durationFrames: number; text: string }> = [];
+
+    template.locations.forEach((loc) => {
+      loc.scenes.forEach((scene) => {
+        const durationFrames = Math.round(scene.duration * fps);
+        clips.push({
+          name: loc.locationName,
+          startFrame: currentFrame,
+          durationFrames,
+          text: loc.locationName,
+        });
+        currentFrame += durationFrames;
+      });
+    });
+
+    // Generate FCPXML
+    const fcpxml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.10">
+  <resources>
+    <format id="r1" name="FFVideoFormat1080p30" frameDuration="1/30s" width="1080" height="1920"/>
+    <effect id="r2" name="Basic Title" uid=".../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti"/>
+  </resources>
+  <library>
+    <event name="Template Import">
+      <project name="${template.videoInfo?.title || 'Untitled Template'}">
+        <sequence format="r1" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
+          <spine>
+${clips.map((clip, idx) => `            <gap name="Placeholder ${idx + 1} - ${clip.name}" offset="${clip.startFrame}/30s" duration="${clip.durationFrames}/30s" start="0s">
+              <note>${clip.text} - Add your ${Number((clip.durationFrames / fps).toFixed(1))}s clip here</note>
+            </gap>`).join('\n')}
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>`;
+
+    // Download as FCPXML file
+    const blob = new Blob([fcpxml], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `template-${params.id}.fcpxml`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -226,6 +285,15 @@ export default function ReelPreview() {
         >
           <Download className="w-5 h-5 text-white" />
           <span className="text-base font-medium text-white">Export to CapCut</span>
+        </button>
+
+        {/* Export to Final Cut Pro Button */}
+        <button
+          onClick={handleExportFinalCut}
+          className="w-full h-[52px] flex items-center justify-center gap-2 rounded-2xl bg-[#2D2640]"
+        >
+          <FileVideo className="w-5 h-5 text-white" />
+          <span className="text-base font-medium text-white">Export to Final Cut Pro</span>
         </button>
 
         {/* Save to Library Button */}
