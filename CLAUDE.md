@@ -74,6 +74,14 @@ Prefer **yt-dlp** (installed locally) over third-party APIs when APIs fail.
 
 See `.claude/skills/yt-dlp-video-extraction.md` for patterns.
 
+## Code Rules
+
+### Duration Formatting
+- **ALWAYS format durations to 1 decimal place**
+- Use `Number(duration.toFixed(1))` when displaying any duration
+- Never show floating point errors like `2.200000000001s`
+- Example: `{Number(scene.duration.toFixed(1))}s` → displays "2.2s"
+
 ## Known Issues
 - TikTok thumbnails show video TITLE text, not intro content
 - Third-party APIs (TikWM, Cobalt) may be rate-limited or down
