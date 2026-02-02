@@ -8,30 +8,46 @@ export default function Home() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string>('');
   const [activeTab, setActiveTab] = useState('templates');
   const router = useRouter();
 
   const handleExtract = async () => {
-    if (!url.trim()) return;
+    if (!url.trim()) {
+      setError('Please paste a TikTok URL');
+      return;
+    }
 
     setLoading(true);
     setError(null);
+    setStatus('Connecting...');
+
     try {
       const platform = url.includes('tiktok') ? 'tiktok' : 'instagram';
+      setStatus('Extracting video info...');
+
       const response = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, platform }),
       });
 
+      setStatus('Processing response...');
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to extract template');
       }
 
+      if (!data.templateId || !data.template) {
+        throw new Error('Invalid response from server');
+      }
+
+      setStatus('Saving template...');
       // Store template in localStorage for persistence
       localStorage.setItem(`template_${data.templateId}`, JSON.stringify(data.template));
+
+      setStatus('Redirecting...');
       // Go directly to editor (skip analyze page - CORS blocks video loading)
       if (data.template.type === 'reel') {
         router.push(`/editor/reel/${data.templateId}`);
@@ -41,6 +57,7 @@ export default function Home() {
     } catch (err) {
       console.error('Extract error:', err);
       setError(err instanceof Error ? err.message : 'Failed to extract. Please try again.');
+      setStatus('');
     } finally {
       setLoading(false);
     }
@@ -122,6 +139,9 @@ export default function Home() {
                 )}
               </button>
             </div>
+            {loading && status && (
+              <p className="text-white/70 text-xs mt-2">{status}</p>
+            )}
             {error && (
               <p className="text-red-200 text-xs mt-1">{error}</p>
             )}
