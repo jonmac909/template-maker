@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Download, Save, CircleCheck, Play } from 'lucide-react';
+import { ArrowLeft, Download, Save, CircleCheck, Play, Clock, MapPin, Film, Smartphone } from 'lucide-react';
 
 interface Template {
   id: string;
@@ -57,8 +57,13 @@ export default function ReelPreview() {
     }
   };
 
-  const handleExport = () => {
+  const handleExportCapCut = () => {
     alert('Opening export options for CapCut...');
+  };
+
+  const handleDownloadToPhone = () => {
+    alert('Merging videos and downloading to your phone library...');
+    // In production: merge all video clips, add text overlays, and trigger download
   };
 
   const handleSaveToLibrary = () => {
@@ -83,6 +88,11 @@ export default function ReelPreview() {
     );
   }
 
+  const locations = template.locations || [];
+  const totalScenes = locations.reduce((sum, loc) => sum + loc.scenes.length, 0);
+  const locationCount = locations.filter(l => l.locationId > 0 && l.locationName !== 'Outro').length;
+  const title = template.videoInfo?.title || 'Untitled Video';
+
   return (
     <div className="min-h-screen bg-black flex flex-col">
       {/* Top Bar - matching Fill Your Template */}
@@ -97,26 +107,56 @@ export default function ReelPreview() {
         <div className="w-9" />
       </div>
 
-      {/* Video Preview */}
-      <div className="flex-1 flex flex-col items-center justify-center px-8">
+      {/* Video Preview - Larger */}
+      <div className="flex justify-center px-6 pt-4 pb-6">
         <div
-          className="w-[180px] h-[320px] rounded-2xl relative overflow-hidden bg-[#1A1A2E] border border-[#8B5CF6]/30"
+          className="w-[220px] h-[390px] rounded-2xl relative overflow-hidden bg-[#1A1A2E] border border-[#8B5CF6]/30"
+          style={{
+            backgroundImage: template.videoInfo?.thumbnail ? `url(${template.videoInfo.thumbnail})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
+          }}
         >
-          {/* Play Button */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center mb-3">
-              <Play className="w-6 h-6 text-white/70 ml-0.5" />
-            </div>
-            {/* Time Display */}
-            <div className="px-3 py-1 bg-black/60 rounded-lg">
-              <span className="text-white text-sm font-medium">{formatDuration(template.totalDuration)}</span>
+          {/* Dark overlay for play button visibility */}
+          {template.videoInfo?.thumbnail && (
+            <div className="absolute inset-0 bg-black/30" />
+          )}
+
+          {/* Centered Play Button */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-white/25 backdrop-blur-sm flex items-center justify-center">
+              <Play className="w-7 h-7 text-white ml-1" />
             </div>
           </div>
         </div>
       </div>
 
+      {/* Video Info */}
+      <div className="px-6 pb-4">
+        {/* Title */}
+        <p className="text-white font-medium text-sm text-center line-clamp-2 mb-3">
+          {title.length > 60 ? title.slice(0, 60) + '...' : title}
+        </p>
+
+        {/* Stats Row */}
+        <div className="flex items-center justify-center gap-5">
+          <div className="flex items-center gap-1.5">
+            <Clock className="w-4 h-4 text-[#8B5CF6]" />
+            <span className="text-sm text-white/70">{formatDuration(template.totalDuration)}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <MapPin className="w-4 h-4 text-[#14B8A6]" />
+            <span className="text-sm text-white/70">{locationCount} locations</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Film className="w-4 h-4 text-[#F472B6]" />
+            <span className="text-sm text-white/70">{totalScenes} scenes</span>
+          </div>
+        </div>
+      </div>
+
       {/* Status Section */}
-      <div className="flex flex-col items-center gap-3 px-4 py-6">
+      <div className="flex flex-col items-center gap-2 px-4 py-4">
         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#14B8A6]">
           <CircleCheck className="w-5 h-5 text-white" />
           <span className="text-sm font-semibold text-white">Video Ready!</span>
@@ -126,24 +166,36 @@ export default function ReelPreview() {
         </p>
       </div>
 
+      {/* Spacer */}
+      <div className="flex-1" />
+
       {/* Bottom Buttons */}
       <div className="flex flex-col gap-3 px-6 pb-8">
-        {/* Export Button */}
+        {/* Download to Phone Button */}
         <button
-          onClick={handleExport}
+          onClick={handleDownloadToPhone}
           className="w-full h-[52px] flex items-center justify-center gap-2 rounded-2xl bg-[#8B5CF6]"
         >
+          <Smartphone className="w-5 h-5 text-white" />
+          <span className="text-base font-semibold text-white">Download to Phone</span>
+        </button>
+
+        {/* Export to CapCut Button */}
+        <button
+          onClick={handleExportCapCut}
+          className="w-full h-[52px] flex items-center justify-center gap-2 rounded-2xl bg-[#2D2640]"
+        >
           <Download className="w-5 h-5 text-white" />
-          <span className="text-base font-semibold text-white">Export to CapCut</span>
+          <span className="text-base font-medium text-white">Export to CapCut</span>
         </button>
 
         {/* Save to Library Button */}
         <button
           onClick={handleSaveToLibrary}
-          className="w-full h-[52px] flex items-center justify-center gap-2 rounded-2xl bg-[#1A1A2E]"
+          className="w-full h-[48px] flex items-center justify-center gap-2 rounded-2xl bg-[#1A1A2E]"
         >
-          <Save className="w-5 h-5 text-white" />
-          <span className="text-base font-medium text-white">Save to Library</span>
+          <Save className="w-5 h-5 text-white/70" />
+          <span className="text-base font-medium text-white/70">Save to Library</span>
         </button>
       </div>
     </div>
