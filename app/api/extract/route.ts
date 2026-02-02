@@ -667,23 +667,55 @@ async function getTikTokVideoInfo(url: string): Promise<{
 }
 
 // Extract frames from video at specific timestamps
-async function extractVideoFrames(videoUrl: string, duration: number, numFrames: number = 8): Promise<string[]> {
-  // We can't do server-side video processing easily, but we can try to get
-  // TikTok's thumbnail variations which often show different scenes
+async function extractVideoFrames(videoUrl: string, duration: number, numFrames: number = 6): Promise<string[]> {
   const frames: string[] = [];
 
-  // TikTok CDN often has frame thumbnails at different timestamps
-  // Try to construct frame URLs based on the video URL pattern
-  if (videoUrl.includes('tiktokcdn.com')) {
-    // TikTok videos often have associated frame images
-    // The thumbnail URL pattern can sometimes be modified to get different frames
-    const interval = Math.floor(duration / numFrames);
-    for (let i = 0; i < numFrames; i++) {
-      // We'll use the video URL itself - Claude can analyze video if given as URL
-      // But for now, we'll rely on the thumbnail
-    }
+  if (!videoUrl) {
+    console.log('No video URL provided for frame extraction');
+    return frames;
   }
 
+  console.log('Attempting to extract frames from video:', videoUrl.substring(0, 60));
+
+  // Use a screenshot service to capture frames at different timestamps
+  // We'll use urlbox.io's free tier or similar
+  const timestamps = [];
+  const interval = Math.max(1, Math.floor(duration / numFrames));
+
+  for (let i = 1; i < numFrames; i++) {
+    timestamps.push(i * interval);
+  }
+
+  console.log('Target timestamps:', timestamps);
+
+  // Try using wsrv.nl to get frames from video (it supports video thumbnails)
+  for (const timestamp of timestamps) {
+    try {
+      // wsrv.nl can extract frames from videos using the 'page' parameter
+      const frameUrl = `https://wsrv.nl/?url=${encodeURIComponent(videoUrl)}&output=jpg&w=720&page=${timestamp}`;
+
+      const response = await fetch(frameUrl, { method: 'HEAD' });
+      if (response.ok) {
+        // Fetch the actual image
+        const imgResponse = await fetch(frameUrl);
+        if (imgResponse.ok) {
+          const buffer = await imgResponse.arrayBuffer();
+          if (buffer.byteLength > 5000) { // Valid image
+            const base64 = Buffer.from(buffer).toString('base64');
+            frames.push(base64);
+            console.log(`Frame at ${timestamp}s extracted, size: ${buffer.byteLength}`);
+          }
+        }
+      }
+    } catch (e) {
+      console.log(`Failed to extract frame at ${timestamp}s:`, e);
+    }
+
+    // Limit to avoid rate limiting
+    if (frames.length >= 4) break;
+  }
+
+  console.log(`Extracted ${frames.length} frames from video`);
   return frames;
 }
 
@@ -700,17 +732,22 @@ async function analyzeVideoWithClaude(
     const countMatch = videoInfo.title.match(/(\d+)\s*(must|best|top|places|things|spots|cafe|restaurant|unique)/i);
     const expectedCount = countMatch ? parseInt(countMatch[1]) : 5;
 
-    const prompt = `OCR this TikTok thumbnail image. Read ALL text visible character by character.
+    const prompt = `You are analyzing a TikTok video. I'm showing you the thumbnail AND frames from throughout the video.
+
+YOUR TASK: Read ALL TEXT OVERLAYS visible in EACH image. The location names appear as text overlays throughout the video frames.
 
 Duration: ${videoInfo.duration} seconds
 Expected locations: ${expectedCount}
 
-LOOK AT THE IMAGE AND READ:
-1. The big intro/hook text (like "10 Dreamiest Places in Northern Thailand")
-2. Any numbered location names (1. Blue Temple, 2. Cafe Name)
-3. Font styles you see
+FOR EACH IMAGE, READ:
+1. Any intro/hook text (like "3 Day Trips To Do From Da Nang")
+2. Location names that appear as text overlays (like "Hoi An", "Ba Na Hills", "Marble Mountains")
+3. Numbered items (1., 2., 3., etc.)
+4. Any captions or labels
 
-Return ONLY this JSON (fill in what you READ from the image):
+IMPORTANT: The ACTUAL location names are shown as TEXT OVERLAYS in the video frames. Read them EXACTLY as written. Do NOT guess or use generic tourist spots.
+
+Return ONLY this JSON (fill in what you ACTUALLY READ from the images):
 
 {
   "type": "reel",
@@ -866,6 +903,33 @@ Create ${expectedCount} locations plus Intro and Outro.`;
 
     if (!hasImage) {
       console.log('All thumbnail fetch methods failed for all URLs');
+    }
+
+    // Try to extract additional frames from the video itself
+    // This helps capture text overlays that appear throughout the video
+    if (videoInfo.videoUrl) {
+      console.log('Attempting to extract frames from video for better text detection...');
+      const videoFrames = await extractVideoFrames(videoInfo.videoUrl, videoInfo.duration || 30);
+
+      for (let i = 0; i < videoFrames.length; i++) {
+        messageContent.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/jpeg',
+            data: videoFrames[i],
+          },
+        });
+        messageContent.push({
+          type: 'text',
+          text: `[Frame ${i + 1} from video - READ ALL TEXT OVERLAYS visible here]`,
+        });
+        hasImage = true;
+      }
+
+      if (videoFrames.length > 0) {
+        console.log(`Added ${videoFrames.length} video frames to analysis`);
+      }
     }
 
     if (!hasImage) {
@@ -1040,34 +1104,10 @@ function createFallbackAnalysis(videoInfo: { title: string; duration: number }):
   const destinationMatch = title.match(/in\s+([A-Z][a-zA-Z\s]+?)(?:\s*[-–—]|\s*[!?.]|\s*#|\s*$)/i);
   const destination = destinationMatch ? destinationMatch[1].trim() : '';
 
-  // Common places database for popular destinations
-  const destinationPlaces: Record<string, string[]> = {
-    'da nang': ['Dragon Bridge', 'Marble Mountains', 'Ba Na Hills', 'My Khe Beach', 'Han Market', 'Lady Buddha', 'Son Tra Peninsula', 'Hoi An Ancient Town', 'Golden Bridge', 'Asia Park'],
-    'hanoi': ['Hoan Kiem Lake', 'Old Quarter', 'Temple of Literature', 'Ho Chi Minh Mausoleum', 'Train Street', 'West Lake', 'Dong Xuan Market', 'St. Joseph Cathedral', 'Thang Long Citadel', 'Ngoc Son Temple'],
-    'ho chi minh': ['Ben Thanh Market', 'War Remnants Museum', 'Notre-Dame Cathedral', 'Cu Chi Tunnels', 'Bitexco Tower', 'Bui Vien Street', 'Independence Palace', 'Jade Emperor Pagoda', 'Saigon Central Post Office', 'District 1'],
-    'bali': ['Ubud Rice Terraces', 'Tanah Lot Temple', 'Uluwatu Temple', 'Seminyak Beach', 'Kuta Beach', 'Sacred Monkey Forest', 'Tirta Empul', 'Mount Batur', 'Nusa Penida', 'Tegallalang'],
-    'tokyo': ['Shibuya Crossing', 'Senso-ji Temple', 'Tokyo Tower', 'Shinjuku', 'Harajuku', 'Meiji Shrine', 'Akihabara', 'Tsukiji Market', 'Odaiba', 'Ginza'],
-    'bangkok': ['Grand Palace', 'Wat Arun', 'Chatuchak Market', 'Khao San Road', 'Chinatown', 'Wat Pho', 'MBK Center', 'Asiatique', 'Jim Thompson House', 'Lumphini Park'],
-    'singapore': ['Marina Bay Sands', 'Gardens by the Bay', 'Sentosa Island', 'Orchard Road', 'Chinatown', 'Little India', 'Clarke Quay', 'Merlion Park', 'Haji Lane', 'Jewel Changi'],
-    'paris': ['Eiffel Tower', 'Louvre Museum', 'Champs-Élysées', 'Notre-Dame', 'Montmartre', 'Arc de Triomphe', 'Sacré-Cœur', 'Seine River', 'Musée d\'Orsay', 'Le Marais'],
-    'london': ['Big Ben', 'Tower Bridge', 'Buckingham Palace', 'British Museum', 'Camden Market', 'Westminster Abbey', 'Hyde Park', 'Covent Garden', 'Borough Market', 'Tower of London'],
-    'new york': ['Times Square', 'Central Park', 'Statue of Liberty', 'Brooklyn Bridge', 'Empire State', 'High Line', 'Grand Central', 'DUMBO', 'Soho', 'Fifth Avenue'],
-    'seoul': ['Gyeongbokgung Palace', 'Bukchon Hanok Village', 'Myeongdong', 'N Seoul Tower', 'Hongdae', 'Gangnam', 'Insadong', 'Lotte World', 'Dongdaemun', 'Cheonggyecheon Stream'],
-  };
-
-  // Find matching destination places
-  const destLower = destination.toLowerCase();
-  let placesForDest = destinationPlaces[destLower] || [];
-
-  // Try partial match if exact match fails
-  if (placesForDest.length === 0) {
-    for (const [key, places] of Object.entries(destinationPlaces)) {
-      if (destLower.includes(key) || key.includes(destLower)) {
-        placesForDest = places;
-        break;
-      }
-    }
-  }
+  // Don't use hardcoded places - they're misleading
+  // Instead, create placeholder locations that user must fill in
+  console.log('Using placeholder locations - video text extraction failed');
+  const placesForDest: string[] = [];
 
   // Extract numbered items from title (e.g., "1. Cafe Name 2. Another Place")
   const numberedItems: string[] = [];
