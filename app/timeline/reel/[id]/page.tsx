@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Play, Pause, Scissors, Type, Music, Eye, Download } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Scissors, Type, Music, Eye, Film } from 'lucide-react';
 
 // Format duration to 1 decimal place
 const formatDuration = (duration: number): string => {
@@ -380,7 +380,9 @@ export default function TimelineEditor() {
             </div>
 
             {/* Scene Track - Colored Cards with Duration */}
-            <div className="flex gap-1 mb-2">
+            <div className="flex items-center gap-2 mb-2">
+              <Film className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
+              <div className="flex-1 flex gap-1">
               {clips.map((clip) => (
                 <button
                   key={clip.id}
@@ -402,6 +404,7 @@ export default function TimelineEditor() {
                   </span>
                 </button>
               ))}
+              </div>
             </div>
 
             {/* Audio Track */}
@@ -443,21 +446,14 @@ export default function TimelineEditor() {
         </div>
       </div>
 
-      {/* Bottom Buttons */}
-      <div className="px-5 py-4 flex-shrink-0 space-y-2">
+      {/* Preview Button */}
+      <div className="px-5 py-4 flex-shrink-0">
         <button
           onClick={handlePreview}
           className="w-full h-12 flex items-center justify-center gap-2 rounded-full bg-[#8B5CF6] text-white font-semibold text-sm"
         >
           <Eye className="w-4 h-4" />
           Preview
-        </button>
-        <button
-          onClick={handleExportCapCut}
-          className="w-full h-10 flex items-center justify-center gap-2 rounded-full bg-[#2D2640] text-white/80 font-medium text-sm"
-        >
-          <Download className="w-4 h-4" />
-          Export to CapCut
         </button>
       </div>
     </div>
