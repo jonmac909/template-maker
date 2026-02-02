@@ -957,7 +957,41 @@ export default function ReelEditor() {
 
               {/* Content */}
               <div className="px-4 pb-4 space-y-3">
-                {/* Thumbnail + Extract */}
+                {/* Title - First */}
+                <div className="bg-[#2D2640] rounded-xl p-3">
+                  <p className="text-[10px] text-white/50 mb-1.5">Title</p>
+                  {editingTitle ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={videoTitle}
+                        onChange={(e) => setVideoTitle(e.target.value)}
+                        className="flex-1 bg-[#1A1A2E] rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveVideoTitle();
+                          if (e.key === 'Escape') setEditingTitle(false);
+                        }}
+                      />
+                      <button
+                        onClick={saveVideoTitle}
+                        className="px-3 py-2 rounded-lg bg-[#8B5CF6] text-white text-xs font-semibold"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setEditingTitle(true)}
+                      className="flex items-center gap-2 w-full text-left"
+                    >
+                      <p className="text-sm text-white flex-1 line-clamp-2">{videoTitle}</p>
+                      <Pencil className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Thumbnail + Extract - Second */}
                 <div className="bg-[#2D2640] rounded-xl p-3">
                   <div className="flex gap-3">
                     {/* Thumbnail preview */}
@@ -991,37 +1025,37 @@ export default function ReelEditor() {
                   </div>
                 </div>
 
-                {/* Title */}
-                <div className="bg-[#2D2640] rounded-xl p-3">
-                  <p className="text-[10px] text-white/50 mb-1.5">Title</p>
-                  {editingTitle ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={videoTitle}
-                        onChange={(e) => setVideoTitle(e.target.value)}
-                        className="flex-1 bg-[#1A1A2E] rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') saveVideoTitle();
-                          if (e.key === 'Escape') setEditingTitle(false);
-                        }}
-                      />
+                {/* Caption - Third (collapsible) */}
+                <div className="bg-[#2D2640] rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => setShowStyleEditor(!showStyleEditor)}
+                    className="flex items-center justify-between w-full p-3"
+                  >
+                    <div>
+                      <p className="text-[10px] text-white/50 text-left">Caption</p>
+                      <p className="text-sm text-white text-left line-clamp-1">
+                        {locations[0]?.scenes[0]?.textOverlay || 'Extract text from thumbnail above'}
+                      </p>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-white/40 transition-transform ${showStyleEditor ? 'rotate-180' : ''}`} />
+                  </button>
+                  {showStyleEditor && (
+                    <div className="px-3 pb-3 border-t border-white/10 pt-3">
+                      <p className="text-[10px] text-white/30 mb-2">This text will appear on your intro</p>
                       <button
-                        onClick={saveVideoTitle}
-                        className="px-3 py-2 rounded-lg bg-[#8B5CF6] text-white text-xs font-semibold"
+                        onClick={() => {
+                          if (locations[0]?.scenes[0]) {
+                            startEditingScene(0, locations[0].scenes[0].id, locations[0].scenes[0].textOverlay, locations[0].scenes[0].textStyle);
+                          }
+                        }}
+                        className="flex items-center gap-2 w-full px-3 py-2 rounded-lg bg-[#1A1A2E] border border-dashed border-white/20 hover:border-[#8B5CF6]/50 transition-colors"
                       >
-                        Save
+                        <span className="text-xs text-white/60 flex-1 text-left">
+                          {locations[0]?.scenes[0]?.textOverlay || 'Tap to edit caption...'}
+                        </span>
+                        <Pencil className="w-3 h-3 text-white/40" />
                       </button>
                     </div>
-                  ) : (
-                    <button
-                      onClick={() => setEditingTitle(true)}
-                      className="flex items-center gap-2 w-full text-left"
-                    >
-                      <p className="text-sm text-white flex-1 line-clamp-2">{videoTitle}</p>
-                      <Pencil className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
-                    </button>
                   )}
                 </div>
               </div>
