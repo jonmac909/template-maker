@@ -939,34 +939,27 @@ export default function ReelEditor() {
       {/* Locations List */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
         <div className="space-y-3">
-          {/* Thumbnail, Title & Caption Section - Always at top */}
+          {/* Thumbnail & Title - Single card */}
           {template?.videoInfo?.thumbnail && (
-            <div className="bg-[#1A1A2E] rounded-2xl overflow-hidden">
-              {/* Header */}
-              <div className="flex items-center justify-between p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#8B5CF6]">
-                    <ImageIcon className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-white">Thumbnail, Title & Caption</h3>
-                    <p className="text-xs text-white/50">Cover image and intro text</p>
-                  </div>
-                </div>
-              </div>
+            <div className="bg-[#1A1A2E] rounded-2xl overflow-hidden p-4">
+              <div className="flex gap-4">
+                {/* Thumbnail preview */}
+                <div
+                  className="w-28 h-36 rounded-xl bg-cover bg-center flex-shrink-0 border border-white/10"
+                  style={{ backgroundImage: `url(${template.videoInfo.thumbnail})` }}
+                />
 
-              {/* Content */}
-              <div className="px-4 pb-4 space-y-3">
-                {/* Title - First */}
-                <div className="bg-[#2D2640] rounded-xl p-3">
-                  <p className="text-[10px] text-white/50 mb-1.5">Title</p>
+                {/* Title + Extract Text */}
+                <div className="flex-1 flex flex-col">
+                  {/* Title */}
+                  <p className="text-[10px] text-white/50 mb-1">Title</p>
                   {editingTitle ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 mb-3">
                       <input
                         type="text"
                         value={videoTitle}
                         onChange={(e) => setVideoTitle(e.target.value)}
-                        className="flex-1 bg-[#1A1A2E] rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]"
+                        className="flex-1 bg-[#2D2640] rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]"
                         autoFocus
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') saveVideoTitle();
@@ -983,79 +976,30 @@ export default function ReelEditor() {
                   ) : (
                     <button
                       onClick={() => setEditingTitle(true)}
-                      className="flex items-center gap-2 w-full text-left"
+                      className="flex items-start gap-2 text-left mb-3"
                     >
-                      <p className="text-sm text-white flex-1 line-clamp-2">{videoTitle}</p>
-                      <Pencil className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
+                      <p className="text-sm text-white flex-1 line-clamp-3">{videoTitle}</p>
+                      <Pencil className="w-3.5 h-3.5 text-white/40 flex-shrink-0 mt-1" />
                     </button>
                   )}
-                </div>
 
-                {/* Thumbnail + Extract - Second */}
-                <div className="bg-[#2D2640] rounded-xl p-3">
-                  <div className="flex gap-3">
-                    {/* Thumbnail preview */}
-                    <div
-                      className="w-24 h-32 rounded-lg bg-cover bg-center flex-shrink-0 border border-white/10"
-                      style={{ backgroundImage: `url(${template.videoInfo.thumbnail})` }}
-                    />
-                    {/* Extract button */}
-                    <div className="flex-1 flex flex-col justify-center gap-2">
-                      <button
-                        onClick={handleReanalyze}
-                        disabled={reanalyzing}
-                        className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#8B5CF6] hover:bg-[#7C4FE0] transition-colors disabled:opacity-50"
-                      >
-                        {reanalyzing ? (
-                          <Loader2 className="w-4 h-4 text-white animate-spin" />
-                        ) : (
-                          <Sparkles className="w-4 h-4 text-white" />
-                        )}
-                        <span className="text-sm font-semibold text-white">
-                          {reanalyzing ? 'Reading...' : 'Extract Text'}
-                        </span>
-                      </button>
-                      {reanalyzeStatus && (
-                        <p className="text-xs text-[#8B5CF6] text-center">{reanalyzeStatus}</p>
-                      )}
-                      <p className="text-[10px] text-white/30 text-center">
-                        AI reads the text from thumbnail
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Caption - Third (collapsible) */}
-                <div className="bg-[#2D2640] rounded-xl overflow-hidden">
+                  {/* Extract Text Button */}
                   <button
-                    onClick={() => setShowStyleEditor(!showStyleEditor)}
-                    className="flex items-center justify-between w-full p-3"
+                    onClick={handleReanalyze}
+                    disabled={reanalyzing}
+                    className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#8B5CF6] hover:bg-[#7C4FE0] transition-colors disabled:opacity-50 mt-auto"
                   >
-                    <div>
-                      <p className="text-[10px] text-white/50 text-left">Caption</p>
-                      <p className="text-sm text-white text-left line-clamp-1">
-                        {locations[0]?.scenes[0]?.textOverlay || 'Extract text from thumbnail above'}
-                      </p>
-                    </div>
-                    <ChevronDown className={`w-4 h-4 text-white/40 transition-transform ${showStyleEditor ? 'rotate-180' : ''}`} />
+                    {reanalyzing ? (
+                      <Loader2 className="w-4 h-4 text-white animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 text-white" />
+                    )}
+                    <span className="text-sm font-semibold text-white">
+                      {reanalyzing ? 'Reading...' : 'Extract Text'}
+                    </span>
                   </button>
-                  {showStyleEditor && (
-                    <div className="px-3 pb-3 border-t border-white/10 pt-3">
-                      <p className="text-[10px] text-white/30 mb-2">This text will appear on your intro</p>
-                      <button
-                        onClick={() => {
-                          if (locations[0]?.scenes[0]) {
-                            startEditingScene(0, locations[0].scenes[0].id, locations[0].scenes[0].textOverlay, locations[0].scenes[0].textStyle);
-                          }
-                        }}
-                        className="flex items-center gap-2 w-full px-3 py-2 rounded-lg bg-[#1A1A2E] border border-dashed border-white/20 hover:border-[#8B5CF6]/50 transition-colors"
-                      >
-                        <span className="text-xs text-white/60 flex-1 text-left">
-                          {locations[0]?.scenes[0]?.textOverlay || 'Tap to edit caption...'}
-                        </span>
-                        <Pencil className="w-3 h-3 text-white/40" />
-                      </button>
-                    </div>
+                  {reanalyzeStatus && (
+                    <p className="text-xs text-[#8B5CF6] text-center mt-1">{reanalyzeStatus}</p>
                   )}
                 </div>
               </div>
