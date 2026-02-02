@@ -121,6 +121,7 @@ export default function TimelineEditor() {
 
     data.locations.forEach((location, locIdx) => {
       const color = SCENE_COLORS[locIdx % SCENE_COLORS.length];
+      const locationStartTime = currentStartTime;
 
       location.scenes.forEach((scene) => {
         const clip: TimelineClip = {
@@ -137,30 +138,30 @@ export default function TimelineEditor() {
           muted: false,
         };
         timelineClips.push(clip);
-
-        if (scene.textOverlay || location.locationName) {
-          overlays.push({
-            id: `text-${location.locationId}-${scene.id}`,
-            text: scene.textOverlay || location.locationName,
-            style: scene.textStyle || {
-              fontFamily: 'Poppins',
-              fontSize: 18,
-              fontWeight: '600',
-              color: '#FFFFFF',
-              hasEmoji: true,
-              emoji: '📍',
-              emojiPosition: 'before',
-              position: 'bottom',
-              alignment: 'left',
-            },
-            startTime: currentStartTime,
-            endTime: currentStartTime + scene.duration,
-            trackIndex: 0,
-          });
-        }
-
         currentStartTime += scene.duration;
       });
+
+      // Create ONE text overlay per LOCATION (not per scene)
+      if (location.locationName) {
+        overlays.push({
+          id: `text-${location.locationId}`,
+          text: location.locationName,
+          style: {
+            fontFamily: 'Poppins',
+            fontSize: 18,
+            fontWeight: '600',
+            color: '#FFFFFF',
+            hasEmoji: true,
+            emoji: '📍',
+            emojiPosition: 'before',
+            position: 'bottom',
+            alignment: 'left',
+          },
+          startTime: locationStartTime,
+          endTime: currentStartTime, // End when location ends
+          trackIndex: 0,
+        });
+      }
     });
 
     setClips(timelineClips);
@@ -320,16 +321,16 @@ export default function TimelineEditor() {
               ))}
             </div>
 
-            {/* Scene Track - Colored Cards */}
+            {/* Scene Track - Colored Cards with Duration */}
             <div className="flex gap-1 mb-2">
-              {clips.map((clip, idx) => (
+              {clips.map((clip) => (
                 <button
                   key={clip.id}
                   onClick={() => {
                     setSelectedClip(clip.id);
                     setCurrentTime(clip.startTime);
                   }}
-                  className={`h-12 rounded-xl transition-all ${
+                  className={`h-12 rounded-xl transition-all flex items-center justify-center ${
                     selectedClip === clip.id ? 'ring-2 ring-white' : ''
                   }`}
                   style={{
@@ -337,7 +338,11 @@ export default function TimelineEditor() {
                     flex: clip.duration,
                     minWidth: 45,
                   }}
-                />
+                >
+                  <span className="text-[10px] font-semibold text-white/90">
+                    {clip.duration}s
+                  </span>
+                </button>
               ))}
             </div>
 
@@ -347,11 +352,11 @@ export default function TimelineEditor() {
               <div className="flex-1 h-6 bg-[#1A1A2E] rounded-lg" />
             </div>
 
-            {/* Text Track */}
+            {/* Text Track - One bar per location */}
             <div className="flex items-center gap-2">
               <Type className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
               <div className="flex-1 flex gap-1">
-                {textOverlays.slice(0, 3).map((overlay, idx) => (
+                {textOverlays.map((overlay) => (
                   <div
                     key={overlay.id}
                     className="h-6 bg-[#8B5CF6] rounded-lg"
@@ -361,8 +366,6 @@ export default function TimelineEditor() {
                     }}
                   />
                 ))}
-                {/* Fill remaining space */}
-                <div className="flex-1" />
               </div>
             </div>
           </div>
