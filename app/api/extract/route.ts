@@ -56,6 +56,12 @@ interface VideoAnalysis {
     name: string;
     hasMusic: boolean;
   };
+  videoInfo?: {
+    title: string;
+    author: string;
+    duration: number;
+    thumbnail: string;
+  };
 }
 
 // Font detection based on video style/content
@@ -379,6 +385,9 @@ function getTextStyleForSceneWithFonts(
   };
 }
 
+// Mac Mini API endpoint for video extraction (has ffmpeg)
+const MAC_MINI_API = process.env.MAC_MINI_API_URL || 'http://jons-mac-mini.local:3847';
+
 export async function POST(request: NextRequest) {
   try {
     const { url, platform } = await request.json();
@@ -390,94 +399,129 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const videoInfo = await getTikTokVideoInfo(url);
-
     console.log('=== EXTRACTION START ===');
-    console.log('Video info retrieved:', {
-      title: videoInfo.title,
-      author: videoInfo.author,
-      duration: videoInfo.duration,
-      hasThumbnail: !!videoInfo.thumbnail,
-      thumbnailUrl: videoInfo.thumbnail?.substring(0, 80),
-      hasVideoUrl: !!videoInfo.videoUrl,
+    console.log('Calling Mac Mini API for:', url);
+
+    // Call Mac Mini API which has ffmpeg for frame extraction
+    const macMiniResponse = await fetch(`${MAC_MINI_API}/extract`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url }),
     });
 
-    // Try LLaVA first (cost-effective), fall back to OpenAI GPT-4o
-    let analysis: VideoAnalysis;
-    if (USE_LLAVA) {
-      try {
-        console.log('=== TRYING LLAVA VISION ===');
-        analysis = await analyzeVideoWithLLaVA(videoInfo, url);
-        console.log('=== LLAVA VISION SUCCESS ===');
-      } catch (llavaError) {
-        console.log('=== LLAVA FAILED, TRYING OPENAI ===');
-        console.log('LLaVA error:', llavaError instanceof Error ? llavaError.message : llavaError);
-        analysis = await analyzeVideoWithClaude(videoInfo, url);
-      }
-    } else {
-      console.log('=== USING OPENAI (LLAVA NOT CONFIGURED) ===');
-      analysis = await analyzeVideoWithClaude(videoInfo, url);
-    }
-    const detectedFonts = detectFontsForVideo(videoInfo, url);
-
-    // Try to fetch and store thumbnail as base64 for later use
-    let thumbnailBase64 = '';
-    if (videoInfo.thumbnail) {
-      console.log('Fetching thumbnail to store as base64...');
-      try {
-        // Try same fetch methods as analyzeVideoWithClaude
-        const fetchMethods = [
-          async () => fetch(videoInfo.thumbnail, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-              'Referer': 'https://www.tiktok.com/',
-            },
-          }),
-          async () => fetch(`https://wsrv.nl/?url=${encodeURIComponent(videoInfo.thumbnail)}&w=720&output=jpg`),
-          async () => fetch(`https://images.weserv.nl/?url=${encodeURIComponent(videoInfo.thumbnail)}&w=720&output=jpg`),
-        ];
-
-        for (const fetchMethod of fetchMethods) {
-          try {
-            const response = await fetchMethod();
-            if (response.ok) {
-              const buffer = await response.arrayBuffer();
-              if (buffer.byteLength > 1000) {
-                thumbnailBase64 = Buffer.from(buffer).toString('base64');
-                console.log('Thumbnail stored as base64, size:', thumbnailBase64.length);
-                break;
-              }
-            }
-          } catch (e) {
-            // Try next method
-          }
-        }
-      } catch (e) {
-        console.log('Failed to store thumbnail as base64:', e);
-      }
+    if (!macMiniResponse.ok) {
+      const errorData = await macMiniResponse.json().catch(() => ({}));
+      console.error('Mac Mini API error:', macMiniResponse.status, errorData);
+      throw new Error(`Mac Mini extraction failed: ${errorData.error || macMiniResponse.status}`);
     }
 
+    const extractionResult = await macMiniResponse.json();
+
+    // Mac Mini returns: { success, videoInfo, analysis: { hookText, locations, outroText, totalLocations } }
+    const videoInfo = extractionResult.videoInfo || {};
+    const analysis = extractionResult.analysis || {};
+    const extractedLocations = analysis.locations || [];
+
+    console.log('Mac Mini extraction result:', {
+      success: extractionResult.success,
+      locationCount: extractedLocations.length,
+      duration: videoInfo.duration,
+      hookText: analysis.hookText,
+    });
+
+    if (!extractionResult.success || extractedLocations.length === 0) {
+      throw new Error('Mac Mini could not extract locations from the video');
+    }
+
+    // Build template from Mac Mini response
     const templateId = generateTemplateId();
+
+    // Convert Mac Mini response to our template format
+    const locations: LocationGroup[] = [];
+    let currentTime = 0;
+    const duration = videoInfo.duration || 30;
+    const locationCount = extractedLocations.length;
+    const timePerLocation = locationCount > 0 ? (duration - 4) / locationCount : 2; // Reserve 2s intro + 2s outro
+
+    // Add intro
+    locations.push({
+      locationId: 0,
+      locationName: 'Intro',
+      scenes: [{
+        id: 1,
+        startTime: 0,
+        endTime: 2,
+        duration: 2,
+        textOverlay: analysis.hookText || videoInfo.title || 'Intro',
+        description: 'Hook shot',
+      }],
+      totalDuration: 2,
+    });
+    currentTime = 2;
+
+    // Add each location from Mac Mini response
+    for (let i = 0; i < extractedLocations.length; i++) {
+      const loc = extractedLocations[i];
+      const locName = loc.name || loc.text?.replace(/^\d+[\.\)]\s*/, '').trim() || `Location ${i + 1}`;
+      const sceneDuration = Math.max(1, Math.round(timePerLocation * 10) / 10);
+
+      locations.push({
+        locationId: i + 1,
+        locationName: locName,
+        scenes: [{
+          id: (i + 1) * 10 + 1,
+          startTime: currentTime,
+          endTime: currentTime + sceneDuration,
+          duration: sceneDuration,
+          textOverlay: `${i + 1}) ${locName}`,
+          description: `Shot of ${locName}`,
+        }],
+        totalDuration: sceneDuration,
+      });
+      currentTime += sceneDuration;
+    }
+
+    // Add outro
+    const outroTime = Math.max(1, duration - currentTime);
+    locations.push({
+      locationId: locationCount + 1,
+      locationName: 'Outro',
+      scenes: [{
+        id: 999,
+        startTime: currentTime,
+        endTime: currentTime + outroTime,
+        duration: outroTime,
+        textOverlay: analysis.outroText || 'Follow for more!',
+        description: 'Call to action',
+      }],
+      totalDuration: outroTime,
+    });
+
     const template = {
       id: templateId,
       platform,
       originalUrl: url,
+      type: 'reel' as const,
+      totalDuration: duration,
+      locations,
+      detectedFonts: [],
       videoInfo: {
-        title: videoInfo.title,
-        author: videoInfo.author,
-        duration: videoInfo.duration,
-        thumbnail: videoInfo.thumbnail,
-        thumbnailBase64: thumbnailBase64 || undefined, // Store base64 for later use
-        videoUrl: videoInfo.videoUrl,
+        title: videoInfo.title || 'TikTok Video',
+        author: videoInfo.author || 'creator',
+        duration: duration,
+        thumbnail: videoInfo.thumbnail || '',
       },
-      ...analysis,
-      detectedFonts,
       createdAt: new Date().toISOString(),
-      needsSceneDetection: true,
+      extractionMethod: 'mac-mini-ffmpeg',
     };
 
     global.templates = global.templates || {};
     global.templates[templateId] = template;
+
+    console.log('=== EXTRACTION SUCCESS ===');
+    console.log('Template created with', locations.length, 'locations');
 
     return NextResponse.json({
       templateId,
@@ -705,6 +749,51 @@ function parseLLaVADescription(description: string): ParsedTextOverlay[] {
     return overlays;
   }
 
+  // First, try to parse as JSON (GPT-4o often returns JSON)
+  try {
+    const jsonMatch = description.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      console.log('[parseLLaVADescription] Found JSON response:', Object.keys(parsed));
+
+      // Handle items array format
+      if (parsed.items && Array.isArray(parsed.items)) {
+        for (const item of parsed.items) {
+          const text = item.text || item.name || `${item.number}) Unknown`;
+          overlays.push({
+            text,
+            position: 'center',
+            color: '#ffffff',
+            fontSize: 'medium',
+            isNumbered: true,
+            number: item.number,
+          });
+        }
+        console.log('[parseLLaVADescription] Parsed', overlays.length, 'items from JSON');
+        return overlays;
+      }
+
+      // Handle locations array format
+      if (parsed.locations && Array.isArray(parsed.locations)) {
+        for (const loc of parsed.locations) {
+          const text = loc.name || loc.text || `${loc.number}) Unknown`;
+          overlays.push({
+            text: `${loc.number}) ${text}`,
+            position: 'center',
+            color: '#ffffff',
+            fontSize: 'medium',
+            isNumbered: true,
+            number: loc.number,
+          });
+        }
+        console.log('[parseLLaVADescription] Parsed', overlays.length, 'locations from JSON');
+        return overlays;
+      }
+    }
+  } catch (e) {
+    console.log('[parseLLaVADescription] Not JSON, trying text patterns');
+  }
+
   // Common patterns in LLaVA descriptions
   const textPatterns = [
     // "text says X" or "text reading X"
@@ -803,6 +892,9 @@ function buildAnalysisFromLLaVA(
   const duration = videoInfo.duration || 30;
   const visualStyle = parseVisualStyle(descriptions);
 
+  // DEBUG: Log raw descriptions
+  console.log('[DEBUG] Raw descriptions:', JSON.stringify(descriptions).substring(0, 500));
+
   // Parse all text overlays from descriptions
   const allOverlays: ParsedTextOverlay[] = [];
   for (const desc of descriptions) {
@@ -810,6 +902,7 @@ function buildAnalysisFromLLaVA(
     allOverlays.push(...parsed);
   }
 
+  console.log('[DEBUG] Parsed overlays:', JSON.stringify(allOverlays).substring(0, 500));
   console.log('[LLaVA Parser] Found', allOverlays.length, 'text overlays');
 
   // Group numbered items
@@ -817,17 +910,20 @@ function buildAnalysisFromLLaVA(
     .filter(o => o.isNumbered)
     .sort((a, b) => (a.number || 0) - (b.number || 0));
 
+  console.log('[DEBUG] Numbered items found:', numberedItems.length, numberedItems.map(i => i.text).join(', '));
+
   // Find hook/intro text (large, non-numbered, first occurrence)
   const hookText = allOverlays.find(o => !o.isNumbered && o.fontSize === 'large')?.text
     || allOverlays.find(o => !o.isNumbered)?.text
     || null;
 
-  // Calculate timing
+  // Calculate timing - DON'T use placeholders if no locations found
   const introTime = Math.min(2, duration * 0.1);
   const outroTime = Math.min(2, duration * 0.1);
   const contentTime = duration - introTime - outroTime;
-  const itemCount = Math.max(numberedItems.length, expectedCount);
-  const timePerItem = contentTime / itemCount;
+  // Only use actual items found - no placeholders
+  const itemCount = numberedItems.length > 0 ? numberedItems.length : 0;
+  const timePerItem = itemCount > 0 ? contentTime / itemCount : 0;
 
   // Get mapped fonts based on visual style
   const mappedFonts = mapExtractedFonts({}, visualStyle);
@@ -1041,11 +1137,18 @@ Focus especially on reading any text overlays word-for-word.`;
 
   console.log('[LLaVA] Analysis complete:', analysis.locations.length, 'locations');
 
+  // Check if we found any actual content locations (not just intro/outro)
+  const contentLocations = analysis.locations.filter(l => l.locationName !== 'Intro' && l.locationName !== 'Outro');
+  if (contentLocations.length === 0) {
+    console.log('[LLaVA] ERROR: No content locations found - parser failed to extract numbered items');
+    throw new Error('Could not extract any numbered locations from the video. The LLaVA parser may need adjustment.');
+  }
+
   return analysis;
 }
 
 // Extract frames from video at specific timestamps
-async function extractVideoFrames(videoUrl: string, duration: number, numFrames: number = 6): Promise<string[]> {
+async function extractVideoFrames(videoUrl: string, duration: number, numFrames: number = 30): Promise<string[]> {
   const frames: string[] = [];
 
   if (!videoUrl) {
@@ -1089,8 +1192,8 @@ async function extractVideoFrames(videoUrl: string, duration: number, numFrames:
       console.log(`Failed to extract frame at ${timestamp}s:`, e);
     }
 
-    // Limit to avoid rate limiting
-    if (frames.length >= 4) break;
+    // Get more frames to catch all locations
+    if (frames.length >= 20) break;
   }
 
   console.log(`Extracted ${frames.length} frames from video`);
@@ -1110,57 +1213,29 @@ async function analyzeVideoWithClaude(
     const countMatch = videoInfo.title.match(/(\d+)\s*(must|best|top|places|things|spots|cafe|restaurant|unique)/i);
     const expectedCount = countMatch ? parseInt(countMatch[1]) : 20;
 
-    const prompt = `You are analyzing a TikTok video. I'm showing you the thumbnail AND frames from throughout the video.
+    const prompt = `Analyze these TikTok video frames. Read ALL text overlays you see.
 
-YOUR TASK: Read ALL TEXT OVERLAYS visible in EACH image. The location names appear as text overlays throughout the video frames.
+IMPORTANT: Find EVERY numbered location (1), 2), 3)... up to the highest number).
+Don't stop at 5 or 10 - some videos have 15-20+ locations.
 
-Duration: ${videoInfo.duration} seconds
+For each frame, extract:
+- The numbered location text (like "1) Dean Village" or "5) Afternoon Tea at The Willow")
+- The hook/intro text if visible
 
-CRITICAL: Find the HIGHEST numbered location you see in the frames (like "17)" or "17." or "#17"). Use that number as the total location count. Videos often have 10-20+ locations!
-
-FOR EACH IMAGE, READ:
-1. Any intro/hook text (like "17 must visit spots in Edinburgh")
-2. ALL numbered items (1., 2., 3., ... up to 17, 20, etc.)
-3. Location names that appear as text overlays
-4. Any captions or labels
-
-IMPORTANT:
-- Read text EXACTLY as written
-- Find EVERY numbered location from 1 to the highest number you see
-- Do NOT stop at 5 locations - there may be 10, 15, 20+!
-
-Return ONLY this JSON:
-
+Return this JSON:
 {
   "type": "reel",
   "totalDuration": ${videoInfo.duration},
-  "highestNumberSeen": <the highest location number you found, e.g., 17>,
-  "extractedText": {
-    "hookText": "COPY THE EXACT BIG TEXT YOU SEE IN THE IMAGE",
-    "visibleLocations": ["all location names you can read"]
-  },
-  "extractedFonts": {
-    "titleFont": { "style": "script|sans-serif|display", "weight": "bold", "description": "what the title font looks like" }
-  },
-  "visualStyle": "elegant|bold|minimal|playful",
+  "hookText": "the intro title text you see",
+  "highestLocationNumber": <the highest number you found, like 16 or 17>,
   "locations": [
-    {
-      "locationId": 0,
-      "locationName": "Intro",
-      "scenes": [{ "id": 1, "startTime": 0, "endTime": 2, "duration": 2, "textOverlay": "THE BIG TEXT FROM THE IMAGE", "description": "Hook" }],
-      "totalDuration": 2
-    },
-    {
-      "locationId": 1,
-      "locationName": "First location name",
-      "scenes": [{ "id": 11, "startTime": 2, "endTime": 5, "duration": 3, "textOverlay": "1. Name", "description": "Shot" }],
-      "totalDuration": 3
-    }
+    {"number": 1, "name": "exact location name from frame"},
+    {"number": 2, "name": "exact location name from frame"}
   ],
-  "music": { "name": "Sound", "hasMusic": true }
+  "outroText": "any ending text like 'Follow for part 2'"
 }
 
-Create locations for EVERY numbered item you see (could be 5, 10, 15, 20+), plus Intro and Outro.`;
+Read the ACTUAL text from frames. Don't guess or make up locations.`;
 
     let analysisResult: VideoAnalysis;
 
@@ -1377,15 +1452,95 @@ Create locations for EVERY numbered item you see (could be 5, 10, 15, 20+), plus
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       console.log('JSON match found, parsing...');
-      analysisResult = JSON.parse(jsonMatch[0]);
+      const rawResult = JSON.parse(jsonMatch[0]);
 
-      // Log extracted info for debugging
-      console.log('=== CLAUDE VISION SUCCESS ===');
-      console.log('Extracted TEXT from thumbnail:', (analysisResult as any).extractedText);
-      console.log('Extracted locations from Claude:', analysisResult.locations?.map((l: LocationGroup) => l.locationName));
-      console.log('Intro text overlay:', analysisResult.locations?.[0]?.scenes?.[0]?.textOverlay);
-      console.log('Extracted fonts from Claude:', (analysisResult as any).extractedFonts);
-      console.log('Visual style:', (analysisResult as any).visualStyle);
+      // Log what GPT-4o actually found
+      console.log('=== GPT-4o VISION SUCCESS ===');
+      console.log('Hook text:', rawResult.hookText);
+      console.log('Highest location number:', rawResult.highestLocationNumber);
+      console.log('Locations found:', rawResult.locations?.length);
+      console.log('Location names:', rawResult.locations?.map((l: any) => l.name || l.locationName));
+
+      // Convert new simplified format to expected template format
+      const actualLocations = rawResult.locations || [];
+      const duration = videoInfo.duration || 30;
+      const locationCount = actualLocations.length;
+      const timePerLocation = locationCount > 0 ? (duration - 4) / locationCount : 3;
+
+      // Build locations array in expected format
+      const formattedLocations: LocationGroup[] = [];
+      let currentTime = 0;
+
+      // Add Intro
+      formattedLocations.push({
+        locationId: 0,
+        locationName: 'Intro',
+        scenes: [{
+          id: 1,
+          startTime: 0,
+          endTime: 2,
+          duration: 2,
+          textOverlay: rawResult.hookText || videoInfo.title,
+          description: 'Hook',
+        }],
+        totalDuration: 2,
+      });
+      currentTime = 2;
+
+      // Add each location from GPT response
+      for (let i = 0; i < actualLocations.length; i++) {
+        const loc = actualLocations[i];
+        const locName = loc.name || loc.locationName || `Location ${i + 1}`;
+        const sceneStart = currentTime;
+        const sceneDuration = Math.round(timePerLocation * 10) / 10;
+
+        formattedLocations.push({
+          locationId: i + 1,
+          locationName: locName,
+          scenes: [{
+            id: (i + 1) * 10 + 1,
+            startTime: sceneStart,
+            endTime: sceneStart + sceneDuration,
+            duration: sceneDuration,
+            textOverlay: `${i + 1}) ${locName}`,
+            description: `Shot of ${locName}`,
+          }],
+          totalDuration: sceneDuration,
+        });
+        currentTime += sceneDuration;
+      }
+
+      // Add Outro
+      const outroTime = Math.max(1, duration - currentTime);
+      formattedLocations.push({
+        locationId: locationCount + 1,
+        locationName: 'Outro',
+        scenes: [{
+          id: 999,
+          startTime: currentTime,
+          endTime: currentTime + outroTime,
+          duration: outroTime,
+          textOverlay: rawResult.outroText || 'Follow for more!',
+          description: 'Call to action',
+        }],
+        totalDuration: outroTime,
+      });
+
+      // Create the analysis result
+      analysisResult = {
+        type: 'reel',
+        totalDuration: duration,
+        locations: formattedLocations,
+        detectedFonts: [],
+        videoInfo: {
+          title: videoInfo.title,
+          author: videoInfo.author,
+          duration: duration,
+          thumbnail: videoInfo.thumbnail || '',
+        },
+      };
+
+      console.log('Formatted', formattedLocations.length, 'locations from GPT response');
 
       // Map extracted font styles to actual Google Fonts
       const extractedFontStyles = (analysisResult as any).extractedFonts || {};

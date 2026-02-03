@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateDescriptions, checkVisionAvailability } from '../../lib/opensource-vision-client';
 
+// Claude Vision API (primary)
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
+
 // OpenAI as fallback
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
@@ -173,42 +177,37 @@ CRITICAL: Return ALL numbered locations from 1 to the highest number you find. D
 
     let responseText = '';
 
-    // Try LLaVA first (cheaper), fall back to OpenAI
-    if (USE_LLAVA) {
+    // Try Claude first (best vision), fall back to OpenAI
+    if (ANTHROPIC_API_KEY) {
       try {
-        console.log('[analyze-frames] Trying LLaVA on RunPod...');
-        const llavaResult = await generateDescriptions(framesToAnalyze, prompt, { maxWaitMs: 120000 });
-
-        if (llavaResult.descriptions && llavaResult.descriptions.length > 0) {
-          // Combine all descriptions into one response
-          responseText = llavaResult.descriptions.join('\n');
-          console.log('[analyze-frames] LLaVA response:', responseText.substring(0, 300));
-        } else {
-          throw new Error('LLaVA returned no descriptions');
-        }
-      } catch (llavaError) {
-        console.log('[analyze-frames] LLaVA failed, falling back to OpenAI:', llavaError);
+        console.log('[analyze-frames] Using Claude Vision API...');
+        responseText = await callClaude(framesToAnalyze, prompt, frameCount);
+      } catch (claudeError) {
+        console.log('[analyze-frames] Claude failed, falling back to OpenAI:', claudeError);
         responseText = await callOpenAI(framesToAnalyze, prompt, frameCount);
       }
-    } else {
-      console.log('[analyze-frames] LLaVA not configured, using OpenAI...');
+    } else if (OPENAI_API_KEY) {
+      console.log('[analyze-frames] Claude not configured, using OpenAI...');
       responseText = await callOpenAI(framesToAnalyze, prompt, frameCount);
+    } else {
+      throw new Error('No vision API configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.');
     }
 
     // Parse JSON from response
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      console.error('[analyze-frames] Could not find JSON in response:', responseText.substring(0, 500));
       throw new Error('Could not parse vision API response');
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // Log what GPT actually returned
+    // Log what the vision API returned
     const items = parsed.items || [];
-    console.log('[analyze-frames] GPT found', items.length, 'items:', items.map((i: any) => i.text).join(', '));
+    console.log('[analyze-frames] Vision API found', items.length, 'items:', items.map((i: any) => i.text).join(', '));
 
     if (items.length === 0) {
-      throw new Error('GPT-4o could not find any numbered locations in the frames');
+      throw new Error('Vision API could not find any numbered locations in the frames');
     }
 
     // Use ONLY the actual items found - no defaults!
@@ -235,6 +234,63 @@ CRITICAL: Return ALL numbered locations from 1 to the highest number you find. D
       { status: 500 }
     );
   }
+}
+
+// Claude Vision API helper
+async function callClaude(frames: string[], prompt: string, frameCount: number): Promise<string> {
+  // Build content array with images and frame labels
+  const content: any[] = [];
+
+  for (let i = 0; i < frames.length; i++) {
+    content.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: 'image/jpeg',
+        data: frames[i],
+      },
+    });
+    content.push({
+      type: 'text',
+      text: `[Frame ${i + 1}/${frameCount}]`,
+    });
+  }
+
+  // Add the prompt at the end
+  content.push({
+    type: 'text',
+    text: prompt,
+  });
+
+  console.log('[analyze-frames] Calling Claude Vision API with', frames.length, 'frames...');
+
+  const claudeResponse = await fetch(`${ANTHROPIC_BASE_URL}/messages`, {
+    method: 'POST',
+    headers: {
+      'x-api-key': ANTHROPIC_API_KEY!,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: content,
+      }],
+    }),
+  });
+
+  if (!claudeResponse.ok) {
+    const errorData = await claudeResponse.json().catch(() => ({}));
+    console.error('[analyze-frames] Claude error:', claudeResponse.status, errorData);
+    throw new Error(`Claude Vision API failed: ${claudeResponse.status}`);
+  }
+
+  const claudeData = await claudeResponse.json();
+  const responseText = claudeData.content?.[0]?.text || '';
+  console.log('[analyze-frames] Claude response:', responseText.substring(0, 300));
+  return responseText;
 }
 
 // OpenAI Vision API helper
