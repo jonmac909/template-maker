@@ -249,27 +249,134 @@ export default function Home() {
     }
   };
 
+  // Extract frames from video using canvas (client-side)
+  const extractFramesFromVideo = async (file: File): Promise<{ frames: string[]; duration: number }> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        reject(new Error('Could not create canvas context'));
+        return;
+      }
+
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+
+      const objectUrl = URL.createObjectURL(file);
+      video.src = objectUrl;
+
+      video.onloadedmetadata = async () => {
+        const duration = video.duration;
+        console.log('[Client] Video duration:', duration);
+
+        // Set canvas size (720p max for efficiency)
+        const scale = Math.min(1, 720 / Math.max(video.videoWidth, video.videoHeight));
+        canvas.width = video.videoWidth * scale;
+        canvas.height = video.videoHeight * scale;
+
+        // Calculate frame timestamps (6-8 frames)
+        const numFrames = Math.min(8, Math.max(4, Math.floor(duration / 5)));
+        const timestamps: number[] = [];
+
+        // First frame
+        timestamps.push(0.5);
+        // Middle frames evenly distributed
+        for (let i = 1; i < numFrames - 1; i++) {
+          timestamps.push((i / numFrames) * duration);
+        }
+        // Last frame
+        timestamps.push(Math.max(0, duration - 0.5));
+
+        console.log('[Client] Extracting frames at:', timestamps);
+        const frames: string[] = [];
+
+        // Extract each frame
+        for (let i = 0; i < timestamps.length; i++) {
+          setStatus(`Extracting frame ${i + 1}/${timestamps.length}...`);
+
+          try {
+            const frame = await extractFrameAtTime(video, canvas, ctx, timestamps[i]);
+            if (frame) {
+              frames.push(frame);
+            }
+          } catch (e) {
+            console.log(`[Client] Failed to extract frame at ${timestamps[i]}s`);
+          }
+        }
+
+        URL.revokeObjectURL(objectUrl);
+        resolve({ frames, duration });
+      };
+
+      video.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Failed to load video'));
+      };
+    });
+  };
+
+  // Extract a single frame at a specific timestamp
+  const extractFrameAtTime = (
+    video: HTMLVideoElement,
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+    time: number
+  ): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Frame extraction timeout')), 5000);
+
+      video.currentTime = time;
+
+      video.onseeked = () => {
+        clearTimeout(timeout);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // Get base64 without the data:image/jpeg;base64, prefix
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const base64 = dataUrl.split(',')[1];
+        resolve(base64);
+      };
+
+      video.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error('Video seek error'));
+      };
+    });
+  };
+
   const handleUploadExtract = async () => {
     if (!selectedFile) {
       setError('Please select a video file');
       return;
     }
 
-    console.log('Starting upload extraction for:', selectedFile.name);
+    console.log('[Client] Starting frame extraction for:', selectedFile.name);
     setLoading(true);
     setError(null);
-    setStatus('Uploading video...');
+    setStatus('Loading video...');
 
     try {
-      const formData = new FormData();
-      formData.append('video', selectedFile);
-      formData.append('title', selectedFile.name.replace(/\.[^/.]+$/, ''));
+      // Extract frames client-side (no file size limit!)
+      const { frames, duration } = await extractFramesFromVideo(selectedFile);
 
-      setStatus('Processing video...');
+      if (frames.length === 0) {
+        throw new Error('Could not extract any frames from video');
+      }
 
-      const response = await fetch('/api/extract-video', {
+      console.log('[Client] Extracted', frames.length, 'frames, sending to API...');
+      setStatus('Analyzing frames...');
+
+      // Send just the frames (not the whole video) - much smaller!
+      const response = await fetch('/api/analyze-frames', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          frames,
+          title: selectedFile.name.replace(/\.[^/.]+$/, ''),
+          duration: Math.round(duration),
+        }),
       });
 
       console.log('Response status:', response.status);

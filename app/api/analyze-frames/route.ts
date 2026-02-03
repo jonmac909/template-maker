@@ -4,15 +4,91 @@ import { NextRequest, NextResponse } from 'next/server';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
-interface FrameData {
+interface TextStyle {
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: string;
+  color: string;
+  backgroundColor?: string;
+  textShadow?: string;
+  hasEmoji: boolean;
+  emoji?: string;
+  emojiPosition?: 'before' | 'after' | 'both';
+  position: 'top' | 'center' | 'bottom';
+  alignment: 'left' | 'center' | 'right';
+}
+
+interface SceneInfo {
+  id: number;
+  startTime: number;
+  endTime: number;
+  duration: number;
+  textOverlay: string | null;
+  textStyle?: TextStyle;
+  description: string;
+}
+
+interface LocationGroup {
+  locationId: number;
+  locationName: string;
+  scenes: SceneInfo[];
+  totalDuration: number;
+}
+
+// Text styles for different scene types
+const TEXT_STYLES = {
+  hook: {
+    fontFamily: 'Montserrat',
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textShadow: '2px 2px 6px rgba(0,0,0,0.9)',
+    hasEmoji: true,
+    emoji: '✨',
+    emojiPosition: 'both' as const,
+    position: 'center' as const,
+    alignment: 'center' as const,
+  },
+  numbered: {
+    fontFamily: 'Inter',
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textShadow: '1px 1px 3px rgba(0,0,0,0.9)',
+    hasEmoji: false,
+    position: 'top' as const,
+    alignment: 'left' as const,
+  },
+  cta: {
+    fontFamily: 'Poppins',
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    hasEmoji: true,
+    emoji: '👆',
+    emojiPosition: 'after' as const,
+    position: 'center' as const,
+    alignment: 'center' as const,
+  },
+};
+
+// New format: frames directly from client-side extraction
+interface ClientFrameRequest {
+  frames: string[];  // Array of base64 strings
+  title: string;
+  duration: number;
+}
+
+// Legacy format support
+interface LegacyFrameData {
   timestamp: number;
   base64: string;
 }
 
-interface AnalysisRequest {
-  thumbnailBase64?: string; // Thumbnail as base64 (if client could fetch it)
-  thumbnailUrl?: string; // Thumbnail URL - server will fetch it (avoids CORS)
-  frames: FrameData[];
+interface LegacyAnalysisRequest {
+  thumbnailBase64?: string;
+  thumbnailUrl?: string;
+  frames: LegacyFrameData[];
   videoInfo: {
     title: string;
     author: string;
@@ -21,223 +97,91 @@ interface AnalysisRequest {
   expectedLocations?: number;
 }
 
-// Helper to fetch thumbnail from URL (server-side, no CORS issues)
-// Uses image proxy services as fallback since TikTok URLs expire
-async function fetchThumbnailFromUrl(url: string): Promise<string | null> {
-  const methods = [
-    // Method 1: Direct fetch with TikTok-like headers
-    async () => {
-      console.log('Method 1: Direct fetch from:', url.substring(0, 60));
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Referer': 'https://www.tiktok.com/',
-          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        },
-      });
-      if (!response.ok) throw new Error(`Direct fetch failed: ${response.status}`);
-      return response;
-    },
-    // Method 2: weserv.nl proxy
-    async () => {
-      const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg&w=720`;
-      console.log('Method 2: wsrv.nl proxy');
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error(`wsrv.nl failed: ${response.status}`);
-      return response;
-    },
-    // Method 3: images.weserv.nl proxy
-    async () => {
-      const proxyUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}&output=jpg&w=720`;
-      console.log('Method 3: images.weserv.nl proxy');
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error(`images.weserv.nl failed: ${response.status}`);
-      return response;
-    },
-  ];
-
-  for (const method of methods) {
-    try {
-      const response = await method();
-      const buffer = await response.arrayBuffer();
-      // Skip too-small responses (error pages)
-      if (buffer.byteLength < 1000) {
-        console.log('Response too small, likely not an image:', buffer.byteLength);
-        continue;
-      }
-      const base64 = Buffer.from(buffer).toString('base64');
-      console.log('Thumbnail fetched successfully, size:', base64.length);
-      return base64;
-    } catch (error) {
-      console.log('Fetch method failed:', error instanceof Error ? error.message : error);
-    }
-  }
-
-  console.error('All thumbnail fetch methods failed for URL:', url.substring(0, 60));
-  return null;
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const body: AnalysisRequest = await request.json();
-    const { thumbnailBase64: providedBase64, thumbnailUrl, frames, videoInfo, expectedLocations = 5 } = body;
+    const body = await request.json();
 
-    console.log('=== ANALYZE-FRAMES REQUEST ===');
-    console.log('Has providedBase64:', !!providedBase64, providedBase64 ? `(${providedBase64.length} chars)` : '');
-    console.log('Has thumbnailUrl:', !!thumbnailUrl, thumbnailUrl ? thumbnailUrl.substring(0, 60) : '');
-    console.log('Frames count:', frames?.length || 0);
+    // Detect request format
+    const isClientFormat = Array.isArray(body.frames) && typeof body.frames[0] === 'string';
 
-    // Try to get thumbnail: prefer base64 if provided, otherwise fetch from URL
-    let thumbnailBase64 = providedBase64;
-    if (!thumbnailBase64 && thumbnailUrl) {
-      console.log('No base64 provided, attempting to fetch from URL...');
-      thumbnailBase64 = await fetchThumbnailFromUrl(thumbnailUrl) || undefined;
-      if (thumbnailBase64) {
-        console.log('Successfully fetched thumbnail from URL');
-      } else {
-        console.log('Failed to fetch thumbnail from URL');
+    let frames: string[] = [];
+    let title = '';
+    let duration = 30;
+
+    if (isClientFormat) {
+      // New client-side extraction format
+      const clientBody = body as ClientFrameRequest;
+      frames = clientBody.frames;
+      title = clientBody.title || 'Uploaded Video';
+      duration = clientBody.duration || 30;
+      console.log('[analyze-frames] Client format - frames:', frames.length, 'duration:', duration);
+    } else {
+      // Legacy format
+      const legacyBody = body as LegacyAnalysisRequest;
+      if (legacyBody.thumbnailBase64) {
+        frames.push(legacyBody.thumbnailBase64);
       }
+      if (legacyBody.frames) {
+        frames.push(...legacyBody.frames.map(f => f.base64));
+      }
+      title = legacyBody.videoInfo?.title || 'Video';
+      duration = legacyBody.videoInfo?.duration || 30;
+      console.log('[analyze-frames] Legacy format - frames:', frames.length);
     }
 
-    // We need either thumbnail or frames
-    if ((!frames || frames.length === 0) && !thumbnailBase64) {
-      console.log('ERROR: No thumbnail or frames available');
-      return NextResponse.json({
-        error: 'Could not load thumbnail. Try re-extracting the template to get a fresh copy.'
-      }, { status: 400 });
+    if (frames.length === 0) {
+      return NextResponse.json({ error: 'No frames provided' }, { status: 400 });
     }
 
-    const hasThumbnail = !!thumbnailBase64;
-    const totalImages = (hasThumbnail ? 1 : 0) + (frames?.length || 0);
-    console.log(`Analyzing ${totalImages} images for video by @${videoInfo.author} (thumbnail: ${hasThumbnail})`);
+    console.log(`[analyze-frames] Analyzing ${frames.length} frames for: "${title}"`);
 
-    // Build message content with thumbnail FIRST (most important!)
-    type AllowedMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-    type ImageContent = { type: 'image'; source: { type: 'base64'; media_type: AllowedMediaType; data: string } };
-    type TextContent = { type: 'text'; text: string };
-    const messageContent: Array<TextContent | ImageContent> = [];
+    // Extract expected count from title
+    const countMatch = title.match(/(\d+)\s*(must|best|top|places|things|spots|cafe|restaurant|unique)/i);
+    const expectedCount = countMatch ? Math.min(parseInt(countMatch[1]), 10) : 5;
 
-    // ⭐ ADD THUMBNAIL FIRST - This is the key fix!
-    // The thumbnail usually shows the title card with the hook text
-    if (thumbnailBase64) {
-      messageContent.push({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: 'image/jpeg',
-          data: thumbnailBase64,
-        },
-      });
-      messageContent.push({
+    // Build OpenAI Vision API request
+    const imageContent = frames.slice(0, 8).map((base64, i) => ([
+      {
+        type: 'image_url',
+        image_url: { url: `data:image/jpeg;base64,${base64}` }
+      },
+      {
         type: 'text',
-        text: `[THUMBNAIL - THIS IS THE MOST IMPORTANT IMAGE! Read ALL text visible here, especially the big title/hook text]`,
-      });
-    }
-
-    // Add each frame as an image
-    if (frames && frames.length > 0) {
-      for (const frame of frames) {
-        messageContent.push({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: 'image/jpeg',
-            data: frame.base64,
-          },
-        });
-        messageContent.push({
-          type: 'text',
-          text: `[Frame at ${frame.timestamp}s]`,
-        });
+        text: `[Frame ${i + 1}/${Math.min(frames.length, 8)}]`
       }
-    }
+    ])).flat();
 
-    // Add analysis prompt - emphasize thumbnail OCR
-    const prompt = `YOU ARE AN OCR SYSTEM. Your task is to READ TEXT from the image(s) provided.
+    const prompt = `You are analyzing frames from a TikTok-style video. I'm showing you ${Math.min(frames.length, 8)} frames.
 
-🔴 CRITICAL: DO NOT use any external knowledge. DO NOT guess. ONLY report what you can LITERALLY SEE written in the image.
+Title hint: "${title}"
+Duration: ${duration} seconds
 
-THE IMAGE SHOWS: A TikTok video thumbnail with TEXT OVERLAID on it.
+YOUR TASK: Read ALL TEXT OVERLAYS visible in EACH frame. Look for:
+1. Any intro/hook text (big text at the start)
+2. Numbered items (1., 2., 3., etc.)
+3. Location names or captions
+4. Any call-to-action text
 
-YOUR TASK:
-1. Look at the image carefully
-2. Find ALL text visible in the image
-3. Read each word EXACTLY as written
-4. Note the FONT STYLE of each text element
+IMPORTANT: Read text EXACTLY as written. Do NOT guess or make up content.
 
-WHAT TEXT TO LOOK FOR:
-- Large title/hook text (usually in the center or top)
-- Numbers like "10", "5", "Top 10"
-- Location names like "Northern Thailand", "Bali", "Bangkok"
-- The text may be in MULTIPLE FONTS (e.g., script + serif)
-
-FONT IDENTIFICATION:
-- script = curly/handwriting style (like "Dreamiest")
-- serif = traditional with decorative strokes (like "NORTHERN THAILAND" in caps)
-- sans-serif = clean modern letters
-- display = bold decorative
-
-Respond with ONLY this JSON:
+Return ONLY this JSON structure:
 
 {
-  "extractedText": {
-    "hookText": "THE EXACT TEXT YOU READ FROM THE IMAGE - WORD FOR WORD",
-    "locationNames": [],
-    "outroText": null
-  },
-  "extractedFonts": {
-    "titleFont": {
-      "style": "script|serif|sans-serif|display",
-      "weight": "normal|bold",
-      "description": "what the main title font looks like"
-    },
-    "locationFont": {
-      "style": "script|serif|sans-serif|display",
-      "weight": "normal|bold",
-      "description": "what the location/subtitle font looks like"
-    }
-  },
-  "visualStyle": {
-    "overall": "elegant|bold|minimal|playful|cinematic|vintage|modern",
-    "colors": ["primary color hex", "secondary color hex"],
-    "textPosition": "top|center|bottom"
-  },
-  "locations": [
-    {
-      "locationId": 0,
-      "locationName": "Intro",
-      "textOverlay": "COPY EXACT TEXT FROM IMAGE HERE",
-      "timestamp": 0
-    }
-  ]
+  "hookText": "THE EXACT BIG TEXT from the intro frame (or null)",
+  "items": [
+    { "number": 1, "text": "exact text for item 1" },
+    { "number": 2, "text": "exact text for item 2" }
+  ],
+  "visualStyle": "elegant|bold|minimal|playful|modern",
+  "outroText": "any call-to-action text (or null)"
 }
 
-🔴 IMPORTANT:
-- hookText MUST be the ACTUAL words visible in the image
-- If the image shows "10 Dreamiest Places NORTHERN THAILAND", write EXACTLY that
-- Do NOT paraphrase or change the wording
-- Include line breaks if the text is on multiple lines`;
+If you can't read any text clearly, return:
+{ "hookText": null, "items": [], "visualStyle": "modern", "outroText": null }`;
 
-    messageContent.push({ type: 'text', text: prompt });
+    imageContent.push({ type: 'text', text: prompt });
 
-    // Call OpenAI Vision API
-    console.log('Calling OpenAI API with GPT-4o...');
-    console.log('API Key present:', !!OPENAI_API_KEY);
-
-    // Convert message content to OpenAI format
-    const openAIContent = messageContent.map(item => {
-      if (item.type === 'text') {
-        return { type: 'text', text: item.text };
-      } else if (item.type === 'image') {
-        return {
-          type: 'image_url',
-          image_url: {
-            url: `data:${item.source.media_type};base64,${item.source.data}`
-          }
-        };
-      }
-      return item;
-    });
+    console.log('[analyze-frames] Calling OpenAI GPT-4o...');
 
     const openAIResponse = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
       method: 'POST',
@@ -247,56 +191,168 @@ Respond with ONLY this JSON:
       },
       body: JSON.stringify({
         model: 'gpt-4o',
-        max_tokens: 4096,
+        max_tokens: 2048,
         messages: [{
           role: 'user',
-          content: openAIContent
+          content: imageContent
         }]
       })
     });
 
     if (!openAIResponse.ok) {
       const errorData = await openAIResponse.json().catch(() => ({}));
-      console.error('OpenAI API error:', openAIResponse.status, JSON.stringify(errorData));
-      throw new Error(`OpenAI API error: ${openAIResponse.status} - ${JSON.stringify(errorData)}`);
+      console.error('[analyze-frames] OpenAI error:', openAIResponse.status, errorData);
+      throw new Error(`Vision API failed: ${openAIResponse.status}`);
     }
 
     const openAIData = await openAIResponse.json();
     const responseText = openAIData.choices?.[0]?.message?.content || '';
-
-    console.log('GPT-4o response:', responseText.substring(0, 500));
+    console.log('[analyze-frames] GPT-4o response:', responseText.substring(0, 300));
 
     // Parse JSON from response
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('No JSON found in Claude response');
+      throw new Error('Could not parse GPT-4o response');
     }
 
-    const analysis = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    // Build template from analysis
+    const template = buildTemplateFromAnalysis(parsed, title, duration, expectedCount, frames[0]);
+
+    // Generate template ID
+    const templateId = `tmpl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    console.log('[analyze-frames] Template created:', templateId, 'with', template.locations.length, 'locations');
 
     return NextResponse.json({
-      success: true,
-      analysis,
-      framesAnalyzed: totalImages,
-      hadThumbnail: hasThumbnail,
+      templateId,
+      template: {
+        id: templateId,
+        ...template,
+        createdAt: new Date().toISOString(),
+        extractionMethod: 'client-frames',
+      },
     });
   } catch (error) {
-    console.error('Frame analysis error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Analysis failed';
-
-    // Provide more specific error messages
-    let userMessage = errorMessage;
-    if (errorMessage.includes('api_key') || errorMessage.includes('authentication') || errorMessage.includes('401')) {
-      userMessage = 'API key error - please check server configuration';
-    } else if (errorMessage.includes('rate') || errorMessage.includes('429')) {
-      userMessage = 'Too many requests - please wait a moment and try again';
-    } else if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
-      userMessage = 'Request timed out - please try again';
-    }
-
+    console.error('[analyze-frames] Error:', error);
     return NextResponse.json(
-      { error: userMessage },
+      { error: `Failed to analyze frames: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     );
   }
+}
+
+function buildTemplateFromAnalysis(
+  analysis: {
+    hookText: string | null;
+    items: Array<{ number: number; text: string }>;
+    visualStyle: string;
+    outroText: string | null;
+  },
+  title: string,
+  duration: number,
+  expectedCount: number,
+  thumbnailBase64?: string
+): {
+  type: 'reel';
+  totalDuration: number;
+  locations: LocationGroup[];
+  detectedFonts: any[];
+  videoInfo: {
+    title: string;
+    author: string;
+    duration: number;
+    thumbnail: string;
+  };
+} {
+  const locations: LocationGroup[] = [];
+  const itemCount = Math.max(analysis.items?.length || 0, expectedCount);
+
+  // Calculate timing
+  const introTime = Math.min(2, duration * 0.1);
+  const outroTime = Math.min(2, duration * 0.1);
+  const contentTime = duration - introTime - outroTime;
+  const timePerItem = contentTime / itemCount;
+
+  let currentTime = 0;
+
+  // Intro
+  const actualIntroTime = Math.max(1, Math.round(introTime));
+  locations.push({
+    locationId: 0,
+    locationName: 'Intro',
+    scenes: [{
+      id: 1,
+      startTime: 0,
+      endTime: actualIntroTime,
+      duration: actualIntroTime,
+      textOverlay: analysis.hookText || title,
+      textStyle: TEXT_STYLES.hook,
+      description: 'Hook shot',
+    }],
+    totalDuration: actualIntroTime,
+  });
+  currentTime = actualIntroTime;
+
+  // Content items
+  for (let i = 0; i < itemCount; i++) {
+    const sceneStart = currentTime;
+    const sceneDuration = Math.max(1, Math.round(timePerItem * 10) / 10);
+
+    const item = analysis.items?.[i];
+    const itemText = item?.text || `Location ${i + 1}`;
+    const displayName = itemText.replace(/^\d+[\.\)]\s*/, '').trim();
+
+    locations.push({
+      locationId: i + 1,
+      locationName: displayName || `Location ${i + 1}`,
+      scenes: [{
+        id: (i + 1) * 10 + 1,
+        startTime: sceneStart,
+        endTime: sceneStart + sceneDuration,
+        duration: sceneDuration,
+        textOverlay: `${i + 1}. ${displayName}`,
+        textStyle: {
+          ...TEXT_STYLES.numbered,
+          hasEmoji: true,
+          emoji: '📍',
+          emojiPosition: 'before' as const,
+        },
+        description: `Shot of ${displayName}`,
+      }],
+      totalDuration: sceneDuration,
+    });
+    currentTime += sceneDuration;
+  }
+
+  // Outro
+  const remainingTime = Math.max(1, duration - currentTime);
+  locations.push({
+    locationId: itemCount + 1,
+    locationName: 'Outro',
+    scenes: [{
+      id: 999,
+      startTime: currentTime,
+      endTime: currentTime + remainingTime,
+      duration: remainingTime,
+      textOverlay: analysis.outroText || 'Follow for more! 👆',
+      textStyle: TEXT_STYLES.cta,
+      description: 'Call to action',
+    }],
+    totalDuration: remainingTime,
+  });
+
+  return {
+    type: 'reel',
+    totalDuration: duration,
+    locations,
+    detectedFonts: [],
+    videoInfo: {
+      title,
+      author: 'You',
+      duration,
+      thumbnail: thumbnailBase64 ? `data:image/jpeg;base64,${thumbnailBase64}` : '',
+    },
+  };
 }
