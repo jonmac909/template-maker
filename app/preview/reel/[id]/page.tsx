@@ -2,7 +2,28 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Download, Save, CircleCheck, Play, Clock, MapPin, Film, Smartphone, FileVideo } from 'lucide-react';
+import { ArrowLeft, Download, Save, CircleCheck, Play, Clock, MapPin, Film, Smartphone, FileVideo, Loader2 } from 'lucide-react';
+import { getVideoBlob, generateVideoId } from '../../../lib/videoStorage';
+
+interface TextStyle {
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: string;
+  color?: string;
+  position?: 'top' | 'center' | 'bottom';
+  hasEmoji?: boolean;
+  emoji?: string;
+  emojiPosition?: 'before' | 'after' | 'both';
+}
+
+interface Scene {
+  id: number;
+  duration: number;
+  textOverlay?: string | null;
+  textStyle?: TextStyle;
+  userVideoId?: string;
+  filled?: boolean;
+}
 
 interface Template {
   id: string;
@@ -17,19 +38,21 @@ interface Template {
   locations: Array<{
     locationId: number;
     locationName: string;
-    scenes: Array<{
-      id: number;
-      duration: number;
-    }>;
+    scenes: Scene[];
     totalDuration: number;
   }>;
 }
+
+const RAILWAY_API_URL = process.env.NEXT_PUBLIC_MAC_MINI_API_URL || 'https://template-api-production-c2cc.up.railway.app';
 
 export default function ReelPreview() {
   const params = useParams();
   const router = useRouter();
   const [template, setTemplate] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rendering, setRendering] = useState(false);
+  const [renderProgress, setRenderProgress] = useState('');
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTemplate();
@@ -212,9 +235,108 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
     URL.revokeObjectURL(url);
   };
 
-  const handleDownloadToPhone = () => {
-    alert('Merging videos and downloading to your phone library...');
-    // In production: merge all video clips, add text overlays, and trigger download
+  const handleDownloadToPhone = async () => {
+    if (!template) return;
+    
+    setRendering(true);
+    setRenderError(null);
+    setRenderProgress('Preparing clips...');
+    
+    try {
+      // Gather all clips with their videos and text overlays
+      const clips: Array<{
+        videoBase64: string;
+        duration: number;
+        textOverlay?: string;
+        textStyle?: TextStyle;
+      }> = [];
+      
+      for (const location of template.locations) {
+        for (const scene of location.scenes) {
+          // Generate video ID and get from IndexedDB
+          const videoId = generateVideoId(params.id as string, location.locationId, scene.id);
+          const blob = await getVideoBlob(videoId);
+          
+          if (!blob) {
+            // Skip scenes without uploaded video
+            console.log(`No video for scene ${scene.id}, skipping...`);
+            continue;
+          }
+          
+          setRenderProgress(`Processing ${location.locationName}...`);
+          
+          // Convert blob to base64
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const result = reader.result as string;
+              // Remove data URL prefix
+              const base64Data = result.split(',')[1];
+              resolve(base64Data);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          
+          clips.push({
+            videoBase64: base64,
+            duration: scene.duration,
+            textOverlay: scene.textOverlay || location.locationName,
+            textStyle: scene.textStyle,
+          });
+        }
+      }
+      
+      if (clips.length === 0) {
+        throw new Error('No video clips uploaded. Please add videos in the editor first.');
+      }
+      
+      setRenderProgress(`Rendering ${clips.length} clips...`);
+      
+      // Call Railway render API
+      const response = await fetch(`${RAILWAY_API_URL}/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clips }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Render failed');
+      }
+      
+      setRenderProgress('Downloading video...');
+      
+      const result = await response.json();
+      
+      if (!result.success || !result.videoBase64) {
+        throw new Error('Render returned no video');
+      }
+      
+      // Convert base64 to blob and download
+      const videoBlob = new Blob(
+        [Uint8Array.from(atob(result.videoBase64), c => c.charCodeAt(0))],
+        { type: 'video/mp4' }
+      );
+      
+      const url = URL.createObjectURL(videoBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${template.videoInfo?.title || 'video'}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setRenderProgress('Done!');
+      setTimeout(() => setRenderProgress(''), 2000);
+      
+    } catch (error) {
+      console.error('Render error:', error);
+      setRenderError(error instanceof Error ? error.message : 'Render failed');
+    } finally {
+      setRendering(false);
+    }
   };
 
   const handleSaveToLibrary = () => {
@@ -322,13 +444,32 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
 
       {/* Bottom Buttons */}
       <div className="flex flex-col gap-3 px-6 pb-8">
+        {/* Render Error */}
+        {renderError && (
+          <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-3 mb-2">
+            <p className="text-red-400 text-sm text-center">{renderError}</p>
+          </div>
+        )}
+        
         {/* Download to Phone Button */}
         <button
           onClick={handleDownloadToPhone}
-          className="w-full h-[52px] flex items-center justify-center gap-2 rounded-2xl bg-[#8B5CF6]"
+          disabled={rendering}
+          className={`w-full h-[52px] flex items-center justify-center gap-2 rounded-2xl ${
+            rendering ? 'bg-[#8B5CF6]/50' : 'bg-[#8B5CF6]'
+          }`}
         >
-          <Smartphone className="w-5 h-5 text-white" />
-          <span className="text-base font-semibold text-white">Download to Phone</span>
+          {rendering ? (
+            <>
+              <Loader2 className="w-5 h-5 text-white animate-spin" />
+              <span className="text-base font-semibold text-white">{renderProgress || 'Rendering...'}</span>
+            </>
+          ) : (
+            <>
+              <Smartphone className="w-5 h-5 text-white" />
+              <span className="text-base font-semibold text-white">Download Video</span>
+            </>
+          )}
         </button>
 
         {/* Export Buttons - Side by Side */}
