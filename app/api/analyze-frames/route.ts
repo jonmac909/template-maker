@@ -139,43 +139,37 @@ export async function POST(request: NextRequest) {
 
     console.log(`[analyze-frames] Analyzing ${frames.length} frames for: "${title}"`);
 
-    // Use up to 30 frames for thorough analysis (1 per second)
-    const framesToAnalyze = frames.slice(0, 30);
+    // Send ALL frames - 1 per second means we need them all to catch every location
+    const framesToAnalyze = frames; // Use ALL frames
     const frameCount = framesToAnalyze.length;
 
-    const prompt = `You are analyzing ${frameCount} frames from a TikTok travel video. Extract ALL location names shown.
+    const prompt = `I'm showing you ${frameCount} frames from a TikTok video (1 frame per second).
 
-Title: "${title}"
-Duration: ${duration} seconds
+Each frame shows a NUMBERED LOCATION like "1) Circus Lane" or "2) Dean Village".
 
-TASK: Read the TEXT OVERLAYS in each frame. Each frame shows a different location with its name as text.
+YOUR TASK: List EVERY numbered location you see across ALL ${frameCount} frames.
 
-EXAMPLE of what you'll see in frames:
-- Frame 1: "17 must visit spots in Edinburgh" (hook text)
-- Frame 2: "1) Circus Lane" (location 1)
-- Frame 3: "2) Dean Village" (location 2)
-- Frame 4: "3) Victoria Street" (location 3)
-... and so on up to "17) Calton Hill"
+Look for text overlays that show:
+- Numbers followed by location names: "1)" "2)" "3)" etc.
+- The location name after each number
 
-YOUR JOB: Extract the ACTUAL location names from each frame. Do NOT make up names - read them from the images.
+INSTRUCTIONS:
+1. Check EVERY frame for a numbered location
+2. Write down the number and EXACT name you see
+3. Continue until you've found the HIGHEST number (could be 5, 10, 15, 17, or more)
 
-Return this JSON with the ACTUAL names you read:
-
+Return JSON:
 {
-  "hookText": "exact hook text like '17 must visit spots in Edinburgh'",
+  "hookText": "intro text if you see it",
   "items": [
-    { "number": 1, "text": "1) Circus Lane" },
-    { "number": 2, "text": "2) Dean Village" },
-    { "number": 3, "text": "3) Victoria Street" }
+    { "number": 1, "text": "1) First Location Name" },
+    { "number": 2, "text": "2) Second Location Name" },
+    { "number": 3, "text": "3) Third Location Name" }
   ],
-  "visualStyle": "elegant|bold|minimal|playful|modern",
-  "outroText": "any call-to-action text or null"
+  "outroText": "ending text if you see it"
 }
 
-IMPORTANT:
-- The "text" field should contain the EXACT text overlay you see (like "5) Afternoon Tea at The Willow")
-- Include ALL locations from the video - there may be 5, 10, 15, or 17+
-- Read EVERY frame carefully - each shows a different location`;
+CRITICAL: Return ALL numbered locations from 1 to the highest number you find. Do NOT stop early.`;
 
     let responseText = '';
 
@@ -210,16 +204,15 @@ IMPORTANT:
     const parsed = JSON.parse(jsonMatch[0]);
 
     // Log what GPT actually returned
-    console.log('[analyze-frames] GPT parsed result:', {
-      hookText: parsed.hookText,
-      highestNumberSeen: parsed.highestNumberSeen,
-      itemsCount: parsed.items?.length,
-      items: parsed.items?.slice(0, 3), // Log first 3 items
-    });
+    const items = parsed.items || [];
+    console.log('[analyze-frames] GPT found', items.length, 'items:', items.map((i: any) => i.text).join(', '));
 
-    // Use highestNumberSeen as the authoritative count, fallback to items length
-    const actualCount = parsed.highestNumberSeen || parsed.items?.length || parsed.totalItemsDetected || 5;
-    const template = buildTemplateFromAnalysis(parsed, title, duration, actualCount, frames[0]);
+    if (items.length === 0) {
+      throw new Error('GPT-4o could not find any numbered locations in the frames');
+    }
+
+    // Use ONLY the actual items found - no defaults!
+    const template = buildTemplateFromAnalysis(parsed, title, duration, items.length, frames[0]);
 
     // Generate template ID
     const templateId = `tmpl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -317,13 +310,9 @@ function buildTemplateFromAnalysis(
   const locations: LocationGroup[] = [];
   const actualItems = analysis.items || [];
 
-  // PRIORITY: Use the actual items GPT found (they have real names)
-  // Only fall back to count-based if no items were returned
-  const itemCount = actualItems.length > 0
-    ? actualItems.length  // Use actual items - they have real names!
-    : (analysis.highestNumberSeen || fallbackCount);  // Fallback to count
-
-  console.log('[buildTemplate] Using itemCount:', itemCount, 'actualItems:', actualItems.length);
+  // Use ONLY the actual items GPT found - they have real names
+  const itemCount = actualItems.length;
+  console.log('[buildTemplate] Building template with', itemCount, 'locations');
 
   // Calculate timing
   const introTime = Math.min(2, duration * 0.1);
