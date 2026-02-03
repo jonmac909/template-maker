@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { generateDescriptions, checkVisionAvailability } from '../../lib/opensource-vision-client';
 
-// Use OpenAI API
+// OpenAI as fallback
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
+
+// Check if LLaVA is configured
+const USE_LLAVA = process.env.RUNPOD_VISION_ENDPOINT_ID && process.env.RUNPOD_API_KEY;
 
 interface TextStyle {
   fontFamily: string;
@@ -139,18 +143,6 @@ export async function POST(request: NextRequest) {
     const framesToAnalyze = frames.slice(0, 20);
     const frameCount = framesToAnalyze.length;
 
-    // Build OpenAI Vision API request with ALL frames
-    const imageContent = framesToAnalyze.map((base64, i) => ([
-      {
-        type: 'image_url',
-        image_url: { url: `data:image/jpeg;base64,${base64}` }
-      },
-      {
-        type: 'text',
-        text: `[Frame ${i + 1}/${frameCount}]`
-      }
-    ])).flat();
-
     const prompt = `You are analyzing ${frameCount} frames from a TikTok-style travel/guide video.
 
 Title: "${title}"
@@ -187,40 +179,34 @@ Return ONLY this JSON:
 
 Include ALL items you find, even if there are 20+!`;
 
-    imageContent.push({ type: 'text', text: prompt });
+    let responseText = '';
 
-    console.log('[analyze-frames] Calling OpenAI GPT-4o...');
+    // Try LLaVA first (cheaper), fall back to OpenAI
+    if (USE_LLAVA) {
+      try {
+        console.log('[analyze-frames] Trying LLaVA on RunPod...');
+        const llavaResult = await generateDescriptions(framesToAnalyze, prompt, { maxWaitMs: 120000 });
 
-    const openAIResponse = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        max_tokens: 4096,
-        messages: [{
-          role: 'user',
-          content: imageContent
-        }]
-      })
-    });
-
-    if (!openAIResponse.ok) {
-      const errorData = await openAIResponse.json().catch(() => ({}));
-      console.error('[analyze-frames] OpenAI error:', openAIResponse.status, errorData);
-      throw new Error(`Vision API failed: ${openAIResponse.status}`);
+        if (llavaResult.descriptions && llavaResult.descriptions.length > 0) {
+          // Combine all descriptions into one response
+          responseText = llavaResult.descriptions.join('\n');
+          console.log('[analyze-frames] LLaVA response:', responseText.substring(0, 300));
+        } else {
+          throw new Error('LLaVA returned no descriptions');
+        }
+      } catch (llavaError) {
+        console.log('[analyze-frames] LLaVA failed, falling back to OpenAI:', llavaError);
+        responseText = await callOpenAI(framesToAnalyze, prompt, frameCount);
+      }
+    } else {
+      console.log('[analyze-frames] LLaVA not configured, using OpenAI...');
+      responseText = await callOpenAI(framesToAnalyze, prompt, frameCount);
     }
-
-    const openAIData = await openAIResponse.json();
-    const responseText = openAIData.choices?.[0]?.message?.content || '';
-    console.log('[analyze-frames] GPT-4o response:', responseText.substring(0, 300));
 
     // Parse JSON from response
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('Could not parse GPT-4o response');
+      throw new Error('Could not parse vision API response');
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
@@ -250,6 +236,51 @@ Include ALL items you find, even if there are 20+!`;
       { status: 500 }
     );
   }
+}
+
+// OpenAI Vision API helper
+async function callOpenAI(frames: string[], prompt: string, frameCount: number): Promise<string> {
+  const imageContent = frames.map((base64, i) => ([
+    {
+      type: 'image_url',
+      image_url: { url: `data:image/jpeg;base64,${base64}` }
+    },
+    {
+      type: 'text',
+      text: `[Frame ${i + 1}/${frameCount}]`
+    }
+  ])).flat();
+
+  imageContent.push({ type: 'text', text: prompt });
+
+  console.log('[analyze-frames] Calling OpenAI GPT-4o...');
+
+  const openAIResponse = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: imageContent
+      }]
+    })
+  });
+
+  if (!openAIResponse.ok) {
+    const errorData = await openAIResponse.json().catch(() => ({}));
+    console.error('[analyze-frames] OpenAI error:', openAIResponse.status, errorData);
+    throw new Error(`OpenAI Vision API failed: ${openAIResponse.status}`);
+  }
+
+  const openAIData = await openAIResponse.json();
+  const responseText = openAIData.choices?.[0]?.message?.content || '';
+  console.log('[analyze-frames] GPT-4o response:', responseText.substring(0, 300));
+  return responseText;
 }
 
 function buildTemplateFromAnalysis(
