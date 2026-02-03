@@ -277,15 +277,16 @@ export default function Home() {
         canvas.width = video.videoWidth * scale;
         canvas.height = video.videoHeight * scale;
 
-        // Extract ~1 frame per second (min 10, max 25 for longer videos)
-        // This ensures we catch fast-paced videos with many locations
-        const numFrames = Math.min(25, Math.max(10, Math.ceil(duration * 1.2)));
+        // Extract 1 frame per second - an 18 second video gets 18 frames
+        // This ensures we catch every location (they appear ~1 second each)
+        const numFrames = Math.min(30, Math.max(10, Math.ceil(duration)));
         const timestamps: number[] = [];
 
-        // Evenly distribute frames across the entire video
+        // One frame per second
         for (let i = 0; i < numFrames; i++) {
-          const t = (i / (numFrames - 1)) * (duration - 0.3) + 0.15;
-          timestamps.push(Math.min(t, duration - 0.1));
+          // Start at 0.5s, then 1.5s, 2.5s, etc. to catch mid-second content
+          const t = Math.min(i + 0.5, duration - 0.1);
+          timestamps.push(t);
         }
 
         console.log('[Client] Extracting frames at:', timestamps);

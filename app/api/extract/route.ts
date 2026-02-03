@@ -946,9 +946,9 @@ async function analyzeVideoWithLLaVA(
     throw new Error(`LLaVA not available: ${availability.error}`);
   }
 
-  // Extract expected count from title
+  // Extract expected count from title - default to 20 for thorough extraction
   const countMatch = videoInfo.title.match(/(\d+)\s*(must|best|top|places|things|spots|cafe|restaurant|unique)/i);
-  const expectedCount = countMatch ? parseInt(countMatch[1]) : 5;
+  const expectedCount = countMatch ? parseInt(countMatch[1]) : 20;
 
   // Collect frames to analyze
   const framesToAnalyze: string[] = [];
@@ -1106,33 +1106,38 @@ async function analyzeVideoWithClaude(
     const destinationMatch = videoInfo.title.match(/in\s+([A-Z][a-zA-Z\s]+?)(?:\s*[-–—]|\s*[!?.]|\s*#|\s*$)/i);
     const destination = destinationMatch ? destinationMatch[1].trim() : '';
 
-    // Count expected locations from title
+    // Count expected locations from title - default to 20 for thorough extraction
     const countMatch = videoInfo.title.match(/(\d+)\s*(must|best|top|places|things|spots|cafe|restaurant|unique)/i);
-    const expectedCount = countMatch ? parseInt(countMatch[1]) : 5;
+    const expectedCount = countMatch ? parseInt(countMatch[1]) : 20;
 
     const prompt = `You are analyzing a TikTok video. I'm showing you the thumbnail AND frames from throughout the video.
 
 YOUR TASK: Read ALL TEXT OVERLAYS visible in EACH image. The location names appear as text overlays throughout the video frames.
 
 Duration: ${videoInfo.duration} seconds
-Expected locations: ${expectedCount}
+
+CRITICAL: Find the HIGHEST numbered location you see in the frames (like "17)" or "17." or "#17"). Use that number as the total location count. Videos often have 10-20+ locations!
 
 FOR EACH IMAGE, READ:
-1. Any intro/hook text (like "3 Day Trips To Do From Da Nang")
-2. Location names that appear as text overlays (like "Hoi An", "Ba Na Hills", "Marble Mountains")
-3. Numbered items (1., 2., 3., etc.)
+1. Any intro/hook text (like "17 must visit spots in Edinburgh")
+2. ALL numbered items (1., 2., 3., ... up to 17, 20, etc.)
+3. Location names that appear as text overlays
 4. Any captions or labels
 
-IMPORTANT: The ACTUAL location names are shown as TEXT OVERLAYS in the video frames. Read them EXACTLY as written. Do NOT guess or use generic tourist spots.
+IMPORTANT:
+- Read text EXACTLY as written
+- Find EVERY numbered location from 1 to the highest number you see
+- Do NOT stop at 5 locations - there may be 10, 15, 20+!
 
-Return ONLY this JSON (fill in what you ACTUALLY READ from the images):
+Return ONLY this JSON:
 
 {
   "type": "reel",
   "totalDuration": ${videoInfo.duration},
+  "highestNumberSeen": <the highest location number you found, e.g., 17>,
   "extractedText": {
     "hookText": "COPY THE EXACT BIG TEXT YOU SEE IN THE IMAGE",
-    "visibleLocations": ["location names you can read"]
+    "visibleLocations": ["all location names you can read"]
   },
   "extractedFonts": {
     "titleFont": { "style": "script|sans-serif|display", "weight": "bold", "description": "what the title font looks like" }
@@ -1155,7 +1160,7 @@ Return ONLY this JSON (fill in what you ACTUALLY READ from the images):
   "music": { "name": "Sound", "hasMusic": true }
 }
 
-Create ${expectedCount} locations plus Intro and Outro.`;
+Create locations for EVERY numbered item you see (could be 5, 10, 15, 20+), plus Intro and Outro.`;
 
     let analysisResult: VideoAnalysis;
 

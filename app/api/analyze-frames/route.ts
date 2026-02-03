@@ -139,8 +139,8 @@ export async function POST(request: NextRequest) {
 
     console.log(`[analyze-frames] Analyzing ${frames.length} frames for: "${title}"`);
 
-    // Use up to 20 frames for thorough analysis
-    const framesToAnalyze = frames.slice(0, 20);
+    // Use up to 30 frames for thorough analysis (1 per second)
+    const framesToAnalyze = frames.slice(0, 30);
     const frameCount = framesToAnalyze.length;
 
     const prompt = `You are analyzing ${frameCount} frames from a TikTok-style travel/guide video.
@@ -150,34 +150,37 @@ Duration: ${duration} seconds
 
 YOUR TASK: Look at EVERY frame and extract ALL text overlays you see.
 
-CRITICAL: This video likely shows MANY locations/items (could be 5, 10, 15, or more). You MUST find ALL of them by checking EVERY frame carefully.
+CRITICAL STEP 1: Find the HIGHEST numbered item visible in ANY frame (like "17)" or "17." or "#17"). This tells you how many total items exist.
+
+CRITICAL STEP 2: Extract ALL items from 1 to that highest number. Videos often have 10-20+ locations!
 
 Look for:
-1. Hook/intro text (big text at start, e.g., "16 must visit spots in Edinburgh")
-2. EVERY numbered item (1., 2., 3., etc.) - there may be 10, 15, 20+ items!
+1. Hook/intro text (big text at start, e.g., "17 must visit spots in Edinburgh")
+2. EVERY numbered item from 1 to the highest number (1., 2., 3., ... 15., 16., 17.)
 3. Location names shown on screen
 4. Outro/CTA text
 
 IMPORTANT:
 - Read text EXACTLY as written
-- Do NOT skip any numbered items
-- Check EVERY frame - items appear briefly (1 second each)
-- If you see "1. Dean Village" in one frame and "5. Royal Mile" in another, there are items 2, 3, 4 you may have missed - include them if you saw them
+- Find the HIGHEST number first, then list ALL items up to that number
+- Do NOT stop at 5 - keep going to 10, 15, 20 if that's what you see
+- Each frame shows 1 second of video - check ALL ${frameCount} frames
 
 Return ONLY this JSON:
 
 {
   "hookText": "exact intro/hook text or null",
+  "highestNumberSeen": <the highest location number you found in any frame>,
   "items": [
     { "number": 1, "text": "exact text for item 1" },
     { "number": 2, "text": "exact text for item 2" }
   ],
-  "totalItemsDetected": <number of unique items you found>,
+  "totalItemsDetected": <should match highestNumberSeen>,
   "visualStyle": "elegant|bold|minimal|playful|modern",
   "outroText": "CTA text or null"
 }
 
-Include ALL items you find, even if there are 20+!`;
+Include ALL items from 1 to highestNumberSeen!`;
 
     let responseText = '';
 
