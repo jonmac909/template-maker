@@ -34,6 +34,7 @@ interface Template {
     author: string;
     duration: number;
     thumbnail: string;
+    videoUrl?: string;
   };
   locations: Array<{
     locationId: number;
@@ -339,9 +340,31 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
     }
   };
 
-  const handleSaveToLibrary = () => {
-    alert('Saved to your library!');
-    router.push('/');
+  const handleSaveToMyEdits = () => {
+    if (!template) return;
+    
+    // Get existing edits from localStorage
+    const existingEdits = JSON.parse(localStorage.getItem('myEdits') || '[]');
+    
+    // Add this template to My Edits
+    const editEntry = {
+      id: template.id,
+      title: template.videoInfo?.title || 'Untitled',
+      thumbnail: template.videoInfo?.thumbnail,
+      duration: template.totalDuration,
+      locationCount: template.locations?.filter(l => l.locationId > 0 && l.locationName !== 'Outro').length || 0,
+      sceneCount: template.locations?.reduce((sum, loc) => sum + loc.scenes.length, 0) || 0,
+      savedAt: new Date().toISOString(),
+    };
+    
+    // Remove if already exists (update it)
+    const filteredEdits = existingEdits.filter((e: any) => e.id !== template.id);
+    filteredEdits.unshift(editEntry); // Add to front
+    
+    localStorage.setItem('myEdits', JSON.stringify(filteredEdits));
+    
+    // Navigate to home with My Edits tab active
+    router.push('/?tab=edits');
   };
 
   const formatDuration = (seconds: number): string => {
@@ -380,27 +403,38 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
         <div className="w-9" />
       </div>
 
-      {/* Video Preview - Larger */}
+      {/* Video Preview - Playable */}
       <div className="flex justify-center px-6 pt-4 pb-6">
-        <div
-          className="w-[220px] h-[390px] rounded-2xl relative overflow-hidden bg-[#1A1A2E] border border-[#8B5CF6]/30"
-          style={{
-            backgroundImage: template.videoInfo?.thumbnail ? `url(${template.videoInfo.thumbnail})` : undefined,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center'
-          }}
-        >
-          {/* Dark overlay for play button visibility */}
-          {template.videoInfo?.thumbnail && (
-            <div className="absolute inset-0 bg-black/30" />
-          )}
-
-          {/* Centered Play Button */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-16 h-16 rounded-full bg-white/25 backdrop-blur-sm flex items-center justify-center">
-              <Play className="w-7 h-7 text-white ml-1" />
+        <div className="w-[220px] h-[390px] rounded-2xl relative overflow-hidden bg-[#1A1A2E] border border-[#8B5CF6]/30">
+          {/* Actual Video Player */}
+          {template.videoInfo?.videoUrl ? (
+            <video
+              className="absolute inset-0 w-full h-full object-cover"
+              src={template.videoInfo.videoUrl}
+              poster={template.videoInfo.thumbnail}
+              controls
+              playsInline
+              preload="metadata"
+            />
+          ) : template.videoInfo?.thumbnail ? (
+            <>
+              <img
+                src={template.videoInfo.thumbnail}
+                alt="Preview"
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/30" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-16 h-16 rounded-full bg-white/25 backdrop-blur-sm flex items-center justify-center">
+                  <Play className="w-7 h-7 text-white ml-1" />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-white/30">No preview</span>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -472,31 +506,13 @@ ${clips.map((clip, idx) => `            <gap name="${clip.name} (${Number((clip.
           )}
         </button>
 
-        {/* Export Buttons - Side by Side */}
-        <div className="flex gap-2">
-          <button
-            onClick={handleExportFinalCut}
-            className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-xl bg-[#2D2640]"
-          >
-            <FileVideo className="w-4 h-4 text-white/80" />
-            <span className="text-xs font-medium text-white/80">Final Cut</span>
-          </button>
-          <button
-            onClick={handleExportDaVinci}
-            className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-xl bg-[#2D2640]"
-          >
-            <FileVideo className="w-4 h-4 text-white/80" />
-            <span className="text-xs font-medium text-white/80">DaVinci</span>
-          </button>
-        </div>
-
-        {/* Save to Library Button */}
+        {/* Save to My Edits Button */}
         <button
-          onClick={handleSaveToLibrary}
+          onClick={handleSaveToMyEdits}
           className="w-full h-[48px] flex items-center justify-center gap-2 rounded-2xl bg-[#1A1A2E]"
         >
           <Save className="w-5 h-5 text-white/70" />
-          <span className="text-base font-medium text-white/70">Save to Library</span>
+          <span className="text-base font-medium text-white/70">Save to My Edits</span>
         </button>
       </div>
     </div>

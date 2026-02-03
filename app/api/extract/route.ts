@@ -22,6 +22,12 @@ interface TextStyle {
   alignment: 'left' | 'center' | 'right';
 }
 
+interface ShotInfo {
+  description: string;
+  startTime: number;
+  endTime: number;
+}
+
 interface SceneInfo {
   id: number;
   startTime: number;
@@ -30,6 +36,7 @@ interface SceneInfo {
   textOverlay: string | null;
   textStyle?: TextStyle;
   description: string;
+  shots?: ShotInfo[];
 }
 
 interface LocationGroup {
@@ -493,17 +500,45 @@ export async function POST(request: NextRequest) {
       
       const sceneDuration = Math.max(1, Math.round((sceneEnd - sceneStart) * 10) / 10);
 
-      locations.push({
-        locationId: i + 1,
-        locationName: locName,
-        scenes: [{
+      // Process shots if available from AI analysis - convert to scenes
+      const shots = loc.shots || [];
+      
+      let scenes: any[] = [];
+      
+      if (shots.length > 0) {
+        // Create one scene per shot - ALL scenes get the same text overlay
+        const locationText = `${i + 1}) ${locName}`;
+        
+        scenes = shots.map((shot: any, shotIdx: number) => {
+          const shotStart = shot.startTime ?? sceneStart;
+          const shotEnd = shot.endTime ?? sceneEnd;
+          const shotDuration = Math.max(0.5, Math.round((shotEnd - shotStart) * 10) / 10);
+          
+          return {
+            id: (i + 1) * 100 + shotIdx + 1,
+            startTime: shotStart,
+            endTime: shotEnd,
+            duration: shotDuration,
+            textOverlay: locationText, // ALL scenes get the same text overlay
+            description: shot.description || `Scene ${shotIdx + 1}`,
+          };
+        });
+      } else {
+        // No shots - create single scene
+        scenes = [{
           id: (i + 1) * 10 + 1,
           startTime: sceneStart,
           endTime: sceneEnd,
           duration: sceneDuration,
           textOverlay: `${i + 1}) ${locName}`,
           description: `Shot of ${locName}`,
-        }],
+        }];
+      }
+
+      locations.push({
+        locationId: i + 1,
+        locationName: locName,
+        scenes,
         totalDuration: sceneDuration,
       });
     }
@@ -528,6 +563,39 @@ export async function POST(request: NextRequest) {
       totalDuration: outroTime,
     });
 
+    // Get font style from AI analysis if available
+    const aiFontStyle = analysis.fontStyle || {};
+    const suggestedFont = aiFontStyle.suggested || aiFontStyle.detected || 'Poppins';
+    const fontCategory = aiFontStyle.category || 'sans-serif';
+    const fontWeight = aiFontStyle.weight || 'semibold';
+    const fontColor = aiFontStyle.color || '#FFFFFF';
+    
+    // Map AI font suggestion to Google Font name
+    const fontMapping: Record<string, string> = {
+      'poppins': 'Poppins',
+      'montserrat': 'Montserrat',
+      'bebas neue': 'Bebas Neue',
+      'oswald': 'Oswald',
+      'playfair display': 'Playfair Display',
+      'dancing script': 'Dancing Script',
+      'pacifico': 'Pacifico',
+      'lato': 'Lato',
+      'roboto': 'Roboto',
+      'open sans': 'Open Sans',
+      'raleway': 'Raleway',
+      'anton': 'Anton',
+      'inter': 'Inter',
+      'space grotesk': 'Space Grotesk',
+      'dm sans': 'DM Sans',
+    };
+    
+    const normalizedSuggestion = suggestedFont.toLowerCase();
+    let mappedFont = fontMapping[normalizedSuggestion] || 
+                    Object.entries(fontMapping).find(([key]) => normalizedSuggestion.includes(key))?.[1] ||
+                    'Poppins';
+    
+    console.log('[Font Detection] AI suggested:', suggestedFont, '-> Using:', mappedFont);
+
     const template = {
       id: templateId,
       platform,
@@ -536,6 +604,14 @@ export async function POST(request: NextRequest) {
       totalDuration: duration,
       locations,
       detectedFonts: [],
+      fontStyle: {
+        fontFamily: mappedFont,
+        category: fontCategory,
+        weight: fontWeight,
+        color: fontColor,
+        detected: aiFontStyle.detected || null,
+        suggested: suggestedFont,
+      },
       videoInfo: {
         title: videoInfo.title || 'TikTok Video',
         author: videoInfo.author || 'creator',

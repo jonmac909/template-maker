@@ -33,6 +33,7 @@ export default function Home() {
   const [templateToDelete, setTemplateToDelete] = useState<SavedTemplate | null>(null);
   const [inputMode, setInputMode] = useState<'url' | 'upload'>('url');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -146,79 +147,99 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setStatus('Connecting...');
+    setProgress(0);
 
     try {
       const platform = inputUrl.includes('tiktok') ? 'tiktok' : 'instagram';
       console.log('Platform detected:', platform);
-      setStatus('Extracting video info...');
 
-      const response = await fetch('/api/extract', {
+      // Try streaming for progress display, fall back to regular endpoint
+      let templateData = null;
+      
+      try {
+        // Use streaming endpoint for real-time progress
+        const streamResponse = await fetch('/api/extract-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: inputUrl, platform }),
+        });
+
+        if (streamResponse.ok && streamResponse.body) {
+          const reader = streamResponse.body.getReader();
+          const decoder = new TextDecoder();
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  
+                  if (data.percent !== undefined) {
+                    setProgress(data.percent);
+                  }
+                  
+                  if (data.message) {
+                    setStatus(data.message);
+                  }
+                } catch (e) {
+                  // Ignore parse errors for incomplete chunks
+                }
+              }
+            }
+          }
+        }
+      } catch (streamError) {
+        console.log('Streaming not available, continuing with regular extraction');
+      }
+
+      // Always use the regular extract endpoint to build the template
+      setStatus('Building template...');
+      setProgress(85);
+
+      const templateResponse = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: inputUrl, platform }),
       });
 
-      console.log('Response status:', response.status);
-      setStatus('Processing response...');
+      templateData = await templateResponse.json();
 
-      const text = await response.text();
-      console.log('Response text length:', text.length);
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (parseErr) {
-        console.error('JSON parse error:', parseErr);
-        throw new Error('Server returned invalid response');
+      if (!templateData.templateId || !templateData.template) {
+        throw new Error('Failed to build template');
       }
 
-      if (!response.ok) {
-        console.error('Response not ok:', data);
-        throw new Error(data.error || 'Failed to extract template');
-      }
-
-      if (!data.templateId || !data.template) {
-        console.error('Missing data:', { hasTemplateId: !!data.templateId, hasTemplate: !!data.template });
-        throw new Error('Invalid response from server');
-      }
-
-      console.log(`[${APP_VERSION}] Template ID:`, data.templateId);
       setStatus('Saving template...');
+      setProgress(98);
 
       // Validate template has required fields
-      if (!data.template.locations || data.template.locations.length === 0) {
-        console.error(`[${APP_VERSION}] Invalid template - no locations!`);
+      if (!templateData.template.locations || templateData.template.locations.length === 0) {
         throw new Error('Extraction failed - no locations found');
       }
 
-      // Store template in localStorage as DRAFT (until user saves it)
+      // Store template in localStorage as DRAFT
       const templateWithDraft = {
-        ...data.template,
-        isDraft: true,  // CRITICAL: Mark as draft!
-        isEdit: false,  // Not an edit
+        ...templateData.template,
+        isDraft: true,
+        isEdit: false,
         createdAt: new Date().toISOString(),
       };
 
-      console.log(`[${APP_VERSION}] Saving as DRAFT:`, {
-        id: data.templateId,
-        isDraft: templateWithDraft.isDraft,
-        locationsCount: templateWithDraft.locations?.length,
-        title: templateWithDraft.videoInfo?.title,
-      });
+      localStorage.setItem(`template_${templateData.templateId}`, JSON.stringify(templateWithDraft));
 
-      localStorage.setItem(`template_${data.templateId}`, JSON.stringify(templateWithDraft));
-      console.log(`[${APP_VERSION}] Saved to localStorage`);
-
-      // Reload saved data to show new template
+      // Reload saved data
       loadSavedData();
-
-      // Switch to Drafts tab since new imports go to drafts
       setActiveTab('drafts');
-      console.log(`[${APP_VERSION}] Switched to drafts tab`);
 
       setStatus('Redirecting to preview...');
+      setProgress(100);
       // Go to template preview page first (then to editor)
-      const previewUrl = `/template/${data.templateId}`;
+      const previewUrl = `/template/${templateData.templateId}`;
       console.log('Navigating to:', previewUrl);
       router.push(previewUrl);
     } catch (err) {
@@ -721,8 +742,21 @@ export default function Home() {
               </div>
             )}
 
-            {loading && status && (
-              <p className="text-white/70 text-xs">{status}</p>
+            {loading && (
+              <div className="space-y-2 w-full">
+                {/* Progress bar */}
+                <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="bg-[#8B5CF6] h-full rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                {/* Status text with percentage */}
+                <div className="flex justify-between items-center">
+                  <p className="text-white/70 text-xs">{status}</p>
+                  <p className="text-white/50 text-xs font-mono">{progress}%</p>
+                </div>
+              </div>
             )}
             {error && (
               <p className="text-red-200 text-xs">{error}</p>
