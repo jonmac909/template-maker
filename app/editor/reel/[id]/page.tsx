@@ -945,76 +945,45 @@ export default function ReelEditor() {
       {/* Locations List */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
         <div className="space-y-3">
-          {/* Thumbnail, Title & Caption */}
-          {template?.videoInfo?.thumbnail && (
+          {/* Title & Caption */}
+          {template?.videoInfo && (
             <div className="bg-[#1A1A2E] rounded-2xl overflow-hidden">
-              {/* Thumbnail + Extract Text */}
-              <div className="p-4">
-                <div className="flex gap-4">
-                  {/* Thumbnail preview */}
-                  <div
-                    className="w-24 h-32 rounded-xl bg-cover bg-center flex-shrink-0 border border-white/10"
-                    style={{ backgroundImage: `url(${template.videoInfo.thumbnail})` }}
-                  />
-
-                  {/* Title + Extract Text */}
-                  <div className="flex-1 flex flex-col">
-                    {/* Title (hook only) */}
-                    <p className="text-[10px] text-white/50 mb-1">Title</p>
-                    {editingTitle ? (
-                      <div className="flex items-center gap-2 mb-2">
-                        <input
-                          type="text"
-                          value={videoTitle}
-                          onChange={(e) => setVideoTitle(e.target.value)}
-                          className="flex-1 bg-[#2D2640] rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') saveVideoTitle();
-                            if (e.key === 'Escape') setEditingTitle(false);
-                          }}
-                        />
-                        <button
-                          onClick={saveVideoTitle}
-                          className="px-3 py-2 rounded-lg bg-[#8B5CF6] text-white text-xs font-semibold"
-                        >
-                          Save
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setEditingTitle(true)}
-                        className="flex items-start gap-2 text-left mb-2"
-                      >
-                        <p className="text-sm text-white flex-1 line-clamp-2">{videoTitle}</p>
-                        <Pencil className="w-3.5 h-3.5 text-white/40 flex-shrink-0 mt-0.5" />
-                      </button>
-                    )}
-
-                    {/* Extract Text Button */}
+              {/* Editable Title */}
+              <div className="px-4 py-3 border-b border-white/10">
+                <p className="text-[10px] text-white/50 mb-1">Title</p>
+                {editingTitle ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={videoTitle}
+                      onChange={(e) => setVideoTitle(e.target.value)}
+                      className="flex-1 bg-[#2D2640] rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveVideoTitle();
+                        if (e.key === 'Escape') setEditingTitle(false);
+                      }}
+                    />
                     <button
-                      onClick={handleReanalyze}
-                      disabled={reanalyzing}
-                      className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-[#8B5CF6] hover:bg-[#7C4FE0] transition-colors disabled:opacity-50 mt-auto"
+                      onClick={saveVideoTitle}
+                      className="px-3 py-2 rounded-lg bg-[#8B5CF6] text-white text-xs font-semibold"
                     >
-                      {reanalyzing ? (
-                        <Loader2 className="w-4 h-4 text-white animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4 text-white" />
-                      )}
-                      <span className="text-sm font-semibold text-white">
-                        {reanalyzing ? 'Reading...' : 'Extract Text'}
-                      </span>
+                      Save
                     </button>
-                    {reanalyzeStatus && (
-                      <p className="text-xs text-[#8B5CF6] text-center mt-1">{reanalyzeStatus}</p>
-                    )}
                   </div>
-                </div>
+                ) : (
+                  <button
+                    onClick={() => setEditingTitle(true)}
+                    className="flex items-center gap-2 text-left w-full"
+                  >
+                    <p className="text-sm text-white flex-1">{videoTitle}</p>
+                    <Pencil className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
+                  </button>
+                )}
               </div>
 
               {/* Caption Dropdown */}
-              <div className="border-t border-white/10">
+              <div>
                 <button
                   onClick={() => setShowCaptionDropdown(!showCaptionDropdown)}
                   className="w-full flex items-center justify-between px-4 py-3"
