@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, House, Plus, FileText, Play, Sparkles, Edit3, X, Trash2 } from 'lucide-react';
+import { Settings, House, Plus, FileText, Play, Sparkles, Edit3, X, Trash2, Upload, Link } from 'lucide-react';
 
 // Version for debugging deployment - if you see this, the new code is deployed
 const APP_VERSION = 'v2.0.6-extract-text';
@@ -31,6 +31,9 @@ export default function Home() {
   const [drafts, setDrafts] = useState<SavedTemplate[]>([]);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<SavedTemplate | null>(null);
+  const [inputMode, setInputMode] = useState<'url' | 'upload'>('url');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   // Load saved data from localStorage on mount
@@ -228,6 +231,116 @@ export default function Home() {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const validTypes = ['video/mp4', 'video/quicktime', 'video/webm', 'video/mov'];
+      if (!validTypes.includes(file.type) && !file.name.match(/\.(mp4|mov|webm)$/i)) {
+        setError('Please upload a valid video file (.mp4, .mov, .webm)');
+        return;
+      }
+      // Validate file size (max 100MB)
+      if (file.size > 100 * 1024 * 1024) {
+        setError('Video file must be less than 100MB');
+        return;
+      }
+      setSelectedFile(file);
+      setError(null);
+    }
+  };
+
+  const handleUploadExtract = async () => {
+    if (!selectedFile) {
+      setError('Please select a video file');
+      return;
+    }
+
+    console.log('Starting upload extraction for:', selectedFile.name);
+    setLoading(true);
+    setError(null);
+    setStatus('Uploading video...');
+
+    try {
+      const formData = new FormData();
+      formData.append('video', selectedFile);
+      formData.append('title', selectedFile.name.replace(/\.[^/.]+$/, ''));
+
+      setStatus('Processing video...');
+
+      const response = await fetch('/api/extract-video', {
+        method: 'POST',
+        body: formData,
+      });
+
+      console.log('Response status:', response.status);
+      setStatus('Processing response...');
+
+      const text = await response.text();
+      console.log('Response text length:', text.length);
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        console.error('JSON parse error:', parseErr);
+        throw new Error('Server returned invalid response');
+      }
+
+      if (!response.ok) {
+        console.error('Response not ok:', data);
+        throw new Error(data.error || 'Failed to extract template');
+      }
+
+      if (!data.templateId || !data.template) {
+        console.error('Missing data:', { hasTemplateId: !!data.templateId, hasTemplate: !!data.template });
+        throw new Error('Invalid response from server');
+      }
+
+      console.log(`[${APP_VERSION}] Template ID:`, data.templateId);
+      setStatus('Saving template...');
+
+      // Validate template has required fields
+      if (!data.template.locations || data.template.locations.length === 0) {
+        console.error(`[${APP_VERSION}] Invalid template - no locations!`);
+        throw new Error('Extraction failed - no locations found');
+      }
+
+      // Store template in localStorage as DRAFT
+      const templateWithDraft = {
+        ...data.template,
+        isDraft: true,
+        isEdit: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      localStorage.setItem(`template_${data.templateId}`, JSON.stringify(templateWithDraft));
+      console.log(`[${APP_VERSION}] Saved to localStorage`);
+
+      // Reload saved data
+      loadSavedData();
+
+      // Switch to Drafts tab
+      setActiveTab('drafts');
+
+      // Reset file selection
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      setStatus('Redirecting to preview...');
+      router.push(`/template/${data.templateId}`);
+    } catch (err) {
+      console.error('Upload extract error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to process video. Please try again.';
+      setError(errorMessage);
+      setStatus('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -388,42 +501,125 @@ export default function Home() {
 
       {/* Content */}
       <div className="flex-1 flex flex-col gap-6 px-6 pt-4 pb-3 overflow-y-auto">
-        {/* Import from URL Card */}
+        {/* Import Card */}
         <div className="flex flex-col gap-3">
           <div className="rounded-[20px] bg-[var(--accent-purple)] p-5 flex flex-col gap-4">
+            {/* Mode Toggle */}
             <div className="flex items-center gap-2">
-              <span className="text-white text-sm font-semibold">📎 Import from URL</span>
+              <div className="flex bg-white/20 rounded-full p-0.5">
+                <button
+                  onClick={() => { setInputMode('url'); setError(null); }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    inputMode === 'url' ? 'bg-white text-[#8B5CF6]' : 'text-white/80'
+                  }`}
+                >
+                  <Link className="w-3.5 h-3.5" />
+                  URL
+                </button>
+                <button
+                  onClick={() => { setInputMode('upload'); setError(null); }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    inputMode === 'upload' ? 'bg-white text-[#8B5CF6]' : 'text-white/80'
+                  }`}
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload
+                </button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => {
-                  setUrl(e.target.value);
-                  setError(null);
-                }}
-                placeholder="Paste TikTok or Reel URL..."
-                className="flex-1 bg-white rounded-[18px] px-4 py-3 text-sm text-black placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/50"
-              />
-              <button
-                onClick={handleExtract}
-                disabled={loading}
-                className={`w-12 h-12 flex items-center justify-center rounded-[18px] bg-white transition-all ${
-                  url.trim() ? 'hover:scale-105 active:scale-95' : 'opacity-50'
-                }`}
-              >
-                {loading ? (
-                  <div className="w-5 h-5 border-2 border-[#8B5CF6] border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <span className="text-[#8B5CF6] text-xl font-bold">→</span>
-                )}
-              </button>
-            </div>
+
+            {/* URL Input */}
+            {inputMode === 'url' && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={url}
+                  onChange={(e) => {
+                    setUrl(e.target.value);
+                    setError(null);
+                  }}
+                  placeholder="Paste TikTok or Reel URL..."
+                  className="flex-1 bg-white rounded-[18px] px-4 py-3 text-sm text-black placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/50"
+                />
+                <button
+                  onClick={handleExtract}
+                  disabled={loading}
+                  className={`w-12 h-12 flex items-center justify-center rounded-[18px] bg-white transition-all ${
+                    url.trim() ? 'hover:scale-105 active:scale-95' : 'opacity-50'
+                  }`}
+                >
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-[#8B5CF6] border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <span className="text-[#8B5CF6] text-xl font-bold">→</span>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Upload Input */}
+            {inputMode === 'upload' && (
+              <div className="flex flex-col gap-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  id="video-upload"
+                />
+                <label
+                  htmlFor="video-upload"
+                  className={`flex items-center justify-center gap-2 bg-white/20 border-2 border-dashed border-white/40 rounded-[18px] px-4 py-4 cursor-pointer hover:bg-white/30 transition-all ${
+                    selectedFile ? 'border-white' : ''
+                  }`}
+                >
+                  {selectedFile ? (
+                    <div className="flex items-center gap-2 text-white">
+                      <Play className="w-4 h-4" />
+                      <span className="text-sm font-medium truncate max-w-[200px]">{selectedFile.name}</span>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setSelectedFile(null);
+                          if (fileInputRef.current) fileInputRef.current.value = '';
+                        }}
+                        className="ml-1 p-1 hover:bg-white/20 rounded-full"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5 text-white/70" />
+                      <span className="text-white/70 text-sm">Tap to select video (.mp4, .mov, .webm)</span>
+                    </>
+                  )}
+                </label>
+                <button
+                  onClick={handleUploadExtract}
+                  disabled={loading || !selectedFile}
+                  className={`w-full h-12 flex items-center justify-center gap-2 rounded-[18px] bg-white transition-all ${
+                    selectedFile && !loading ? 'hover:scale-[1.02] active:scale-[0.98]' : 'opacity-50'
+                  }`}
+                >
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-[#8B5CF6] border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-[#8B5CF6]" />
+                      <span className="text-[#8B5CF6] font-semibold">Extract Template</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
             {loading && status && (
-              <p className="text-white/70 text-xs mt-2">{status}</p>
+              <p className="text-white/70 text-xs">{status}</p>
             )}
             {error && (
-              <p className="text-red-200 text-xs mt-1">{error}</p>
+              <p className="text-red-200 text-xs">{error}</p>
             )}
           </div>
         </div>

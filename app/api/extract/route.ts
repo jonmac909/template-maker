@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { generateDescriptions, checkVisionAvailability } from '../../lib/opensource-vision-client';
 
-// Use OpenAI API
+// Use OpenAI API as fallback
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
+
+// LLaVA is primary, OpenAI is fallback
+const USE_LLAVA = process.env.RUNPOD_VISION_ENDPOINT_ID && process.env.RUNPOD_API_KEY;
 
 interface TextStyle {
   fontFamily: string;
@@ -398,7 +402,22 @@ export async function POST(request: NextRequest) {
       hasVideoUrl: !!videoInfo.videoUrl,
     });
 
-    const analysis = await analyzeVideoWithClaude(videoInfo, url);
+    // Try LLaVA first (cost-effective), fall back to OpenAI GPT-4o
+    let analysis: VideoAnalysis;
+    if (USE_LLAVA) {
+      try {
+        console.log('=== TRYING LLAVA VISION ===');
+        analysis = await analyzeVideoWithLLaVA(videoInfo, url);
+        console.log('=== LLAVA VISION SUCCESS ===');
+      } catch (llavaError) {
+        console.log('=== LLAVA FAILED, TRYING OPENAI ===');
+        console.log('LLaVA error:', llavaError instanceof Error ? llavaError.message : llavaError);
+        analysis = await analyzeVideoWithClaude(videoInfo, url);
+      }
+    } else {
+      console.log('=== USING OPENAI (LLAVA NOT CONFIGURED) ===');
+      analysis = await analyzeVideoWithClaude(videoInfo, url);
+    }
     const detectedFonts = detectFontsForVideo(videoInfo, url);
 
     // Try to fetch and store thumbnail as base64 for later use
@@ -664,6 +683,365 @@ async function getTikTokVideoInfo(url: string): Promise<{
     thumbnail: '',
     videoUrl: '',
   };
+}
+
+/**
+ * Parse LLaVA descriptions to extract structured text overlay data
+ */
+interface ParsedTextOverlay {
+  text: string;
+  position: 'top' | 'center' | 'bottom';
+  color: string;
+  backgroundColor?: string;
+  fontSize: 'small' | 'medium' | 'large';
+  isNumbered: boolean;
+  number?: number;
+}
+
+function parseLLaVADescription(description: string): ParsedTextOverlay[] {
+  const overlays: ParsedTextOverlay[] = [];
+
+  if (!description || description.toLowerCase().includes('no text')) {
+    return overlays;
+  }
+
+  // Common patterns in LLaVA descriptions
+  const textPatterns = [
+    // "text says X" or "text reading X"
+    /text\s+(?:says?|reads?|reading|showing)\s*[:\-]?\s*["']?([^"'\n.]+)["']?/gi,
+    // "X written" or "X displayed"
+    /["']([^"']+)["']\s+(?:written|displayed|shown|appears)/gi,
+    // "overlay text: X"
+    /overlay\s+text[:\s]+["']?([^"'\n.]+)["']?/gi,
+    // "caption: X"
+    /caption[:\s]+["']?([^"'\n.]+)["']?/gi,
+    // Numbers like "1." or "#1"
+    /(?:number\s+)?["']?(\d+[\.\)]\s*[^"'\n,]+)["']?/gi,
+    // Quoted text
+    /["']([^"']{3,50})["']/g,
+  ];
+
+  const foundTexts = new Set<string>();
+
+  for (const pattern of textPatterns) {
+    let match;
+    while ((match = pattern.exec(description)) !== null) {
+      const text = match[1].trim();
+      if (text.length > 2 && text.length < 100 && !foundTexts.has(text.toLowerCase())) {
+        foundTexts.add(text.toLowerCase());
+
+        // Determine position from description context
+        let position: 'top' | 'center' | 'bottom' = 'center';
+        const lowerDesc = description.toLowerCase();
+        if (lowerDesc.includes('top') || lowerDesc.includes('upper')) position = 'top';
+        else if (lowerDesc.includes('bottom') || lowerDesc.includes('lower')) position = 'bottom';
+
+        // Determine color
+        let color = '#ffffff';
+        if (lowerDesc.includes('white text')) color = '#ffffff';
+        else if (lowerDesc.includes('black text')) color = '#000000';
+        else if (lowerDesc.includes('yellow')) color = '#ffff00';
+        else if (lowerDesc.includes('red text')) color = '#ff0000';
+
+        // Check if numbered
+        const isNumbered = /^\d+[\.\)]/.test(text);
+        const numberMatch = text.match(/^(\d+)[\.\)]/);
+
+        // Determine font size
+        let fontSize: 'small' | 'medium' | 'large' = 'medium';
+        if (lowerDesc.includes('large') || lowerDesc.includes('big') || lowerDesc.includes('bold')) fontSize = 'large';
+        else if (lowerDesc.includes('small') || lowerDesc.includes('subtitle')) fontSize = 'small';
+
+        overlays.push({
+          text,
+          position,
+          color,
+          fontSize,
+          isNumbered,
+          number: numberMatch ? parseInt(numberMatch[1]) : undefined,
+        });
+      }
+    }
+  }
+
+  return overlays;
+}
+
+/**
+ * Parse visual style from LLaVA description
+ */
+function parseVisualStyle(descriptions: string[]): string {
+  const combined = descriptions.join(' ').toLowerCase();
+
+  if (combined.includes('elegant') || combined.includes('luxury') || combined.includes('sophisticated')) {
+    return 'elegant';
+  }
+  if (combined.includes('bold') || combined.includes('vibrant') || combined.includes('energetic')) {
+    return 'bold';
+  }
+  if (combined.includes('minimal') || combined.includes('clean') || combined.includes('simple')) {
+    return 'minimal';
+  }
+  if (combined.includes('playful') || combined.includes('fun') || combined.includes('colorful')) {
+    return 'playful';
+  }
+  if (combined.includes('cinematic') || combined.includes('dramatic') || combined.includes('film')) {
+    return 'cinematic';
+  }
+
+  return 'modern';
+}
+
+/**
+ * Build video analysis from LLaVA descriptions
+ */
+function buildAnalysisFromLLaVA(
+  descriptions: string[],
+  videoInfo: { title: string; duration: number },
+  expectedCount: number
+): VideoAnalysis {
+  const duration = videoInfo.duration || 30;
+  const visualStyle = parseVisualStyle(descriptions);
+
+  // Parse all text overlays from descriptions
+  const allOverlays: ParsedTextOverlay[] = [];
+  for (const desc of descriptions) {
+    const parsed = parseLLaVADescription(desc);
+    allOverlays.push(...parsed);
+  }
+
+  console.log('[LLaVA Parser] Found', allOverlays.length, 'text overlays');
+
+  // Group numbered items
+  const numberedItems = allOverlays
+    .filter(o => o.isNumbered)
+    .sort((a, b) => (a.number || 0) - (b.number || 0));
+
+  // Find hook/intro text (large, non-numbered, first occurrence)
+  const hookText = allOverlays.find(o => !o.isNumbered && o.fontSize === 'large')?.text
+    || allOverlays.find(o => !o.isNumbered)?.text
+    || null;
+
+  // Calculate timing
+  const introTime = Math.min(2, duration * 0.1);
+  const outroTime = Math.min(2, duration * 0.1);
+  const contentTime = duration - introTime - outroTime;
+  const itemCount = Math.max(numberedItems.length, expectedCount);
+  const timePerItem = contentTime / itemCount;
+
+  // Get mapped fonts based on visual style
+  const mappedFonts = mapExtractedFonts({}, visualStyle);
+
+  const locations: LocationGroup[] = [];
+  let currentTime = 0;
+
+  // Intro
+  const actualIntroTime = Math.max(1, Math.round(introTime));
+  locations.push({
+    locationId: 0,
+    locationName: 'Intro',
+    scenes: [{
+      id: 1,
+      startTime: 0,
+      endTime: actualIntroTime,
+      duration: actualIntroTime,
+      textOverlay: hookText,
+      textStyle: {
+        ...TEXT_STYLES.hook,
+        fontFamily: mappedFonts.titleFont,
+        fontWeight: mappedFonts.titleWeight,
+      },
+      description: 'Hook shot'
+    }],
+    totalDuration: actualIntroTime
+  });
+  currentTime = actualIntroTime;
+
+  // Content items
+  for (let i = 0; i < itemCount; i++) {
+    const sceneStart = currentTime;
+    const sceneDuration = Math.max(1, Math.round(timePerItem * 10) / 10);
+
+    // Use numbered item if available, otherwise placeholder
+    const item = numberedItems[i];
+    const itemText = item?.text || `Location ${i + 1}`;
+    const displayName = itemText.replace(/^\d+[\.\)]\s*/, '').trim();
+
+    locations.push({
+      locationId: i + 1,
+      locationName: displayName || `Location ${i + 1}`,
+      scenes: [{
+        id: (i + 1) * 10 + 1,
+        startTime: sceneStart,
+        endTime: sceneStart + sceneDuration,
+        duration: sceneDuration,
+        textOverlay: `${i + 1}. ${displayName}`,
+        textStyle: {
+          ...TEXT_STYLES.numbered,
+          fontFamily: mappedFonts.accentFont,
+          fontWeight: mappedFonts.bodyWeight,
+          hasEmoji: true,
+          emoji: '📍',
+          emojiPosition: 'before' as const,
+        },
+        description: `Shot of ${displayName}`
+      }],
+      totalDuration: sceneDuration
+    });
+    currentTime += sceneDuration;
+  }
+
+  // Outro
+  const remainingTime = Math.max(1, duration - currentTime);
+  locations.push({
+    locationId: itemCount + 1,
+    locationName: 'Outro',
+    scenes: [{
+      id: 999,
+      startTime: currentTime,
+      endTime: currentTime + remainingTime,
+      duration: remainingTime,
+      textOverlay: 'Follow for more! 👆',
+      textStyle: {
+        ...TEXT_STYLES.cta,
+        fontFamily: mappedFonts.bodyFont,
+      },
+      description: 'Call to action'
+    }],
+    totalDuration: remainingTime
+  });
+
+  return {
+    type: 'reel',
+    totalDuration: duration,
+    locations,
+    detectedFonts: [],
+    visualStyle,
+    mappedFonts,
+    extractionMethod: 'llava-vision',
+    extractedText: {
+      hookText,
+      visibleLocations: numberedItems.map(i => i.text),
+    },
+    music: {
+      name: 'Trending Sound',
+      hasMusic: true
+    },
+  } as VideoAnalysis;
+}
+
+/**
+ * Analyze video frames using LLaVA on RunPod
+ */
+async function analyzeVideoWithLLaVA(
+  videoInfo: { title: string; author: string; duration: number; thumbnail: string; videoUrl: string; allCovers?: string[] },
+  originalUrl: string
+): Promise<VideoAnalysis> {
+  console.log('[LLaVA] Starting video analysis...');
+
+  // Check if LLaVA is available
+  const availability = await checkVisionAvailability();
+  if (!availability.available) {
+    console.log('[LLaVA] Not available:', availability.error);
+    throw new Error(`LLaVA not available: ${availability.error}`);
+  }
+
+  // Extract expected count from title
+  const countMatch = videoInfo.title.match(/(\d+)\s*(must|best|top|places|things|spots|cafe|restaurant|unique)/i);
+  const expectedCount = countMatch ? parseInt(countMatch[1]) : 5;
+
+  // Collect frames to analyze
+  const framesToAnalyze: string[] = [];
+
+  // Try to get thumbnail
+  const imageUrls: string[] = [];
+  if (videoInfo.allCovers && videoInfo.allCovers.length > 0) {
+    for (const coverUrl of videoInfo.allCovers) {
+      if (coverUrl && coverUrl.startsWith('http') && !imageUrls.includes(coverUrl)) {
+        imageUrls.push(coverUrl);
+      }
+    }
+  }
+  if (imageUrls.length === 0 && videoInfo.thumbnail && videoInfo.thumbnail.startsWith('http')) {
+    imageUrls.push(videoInfo.thumbnail);
+  }
+
+  // Fetch thumbnails and convert to base64
+  for (const imageUrl of imageUrls) {
+    if (framesToAnalyze.length >= 2) break; // Limit to 2 thumbnails
+
+    const fetchMethods = [
+      () => fetch(imageUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Referer': 'https://www.tiktok.com/',
+        },
+      }),
+      () => fetch(`https://wsrv.nl/?url=${encodeURIComponent(imageUrl)}&w=720&output=jpg`),
+      () => fetch(`https://images.weserv.nl/?url=${encodeURIComponent(imageUrl)}&w=720&output=jpg`),
+    ];
+
+    for (const fetchMethod of fetchMethods) {
+      try {
+        const response = await fetchMethod();
+        if (response.ok) {
+          const buffer = await response.arrayBuffer();
+          if (buffer.byteLength > 1000) {
+            const base64 = Buffer.from(buffer).toString('base64');
+            framesToAnalyze.push(base64);
+            console.log('[LLaVA] Fetched thumbnail, size:', buffer.byteLength);
+            break;
+          }
+        }
+      } catch (e) {
+        // Try next method
+      }
+    }
+  }
+
+  // Extract video frames if we have a video URL
+  if (videoInfo.videoUrl) {
+    console.log('[LLaVA] Extracting frames from video...');
+    const videoFrames = await extractVideoFrames(videoInfo.videoUrl, videoInfo.duration || 30, 4);
+    framesToAnalyze.push(...videoFrames);
+    console.log('[LLaVA] Extracted', videoFrames.length, 'video frames');
+  }
+
+  if (framesToAnalyze.length === 0) {
+    throw new Error('No frames available for LLaVA analysis');
+  }
+
+  console.log('[LLaVA] Analyzing', framesToAnalyze.length, 'frames...');
+
+  // Create prompt for LLaVA
+  const llavaPrompt = `Analyze this TikTok video frame carefully. Describe:
+1. Any TEXT OVERLAYS visible (read them EXACTLY as written)
+2. The position of text (top, center, bottom)
+3. Text colors and style (bold, outlined, etc.)
+4. If there are numbered items (1., 2., 3.)
+5. Location names or place names visible
+6. Overall visual style (minimal, bold, elegant, playful)
+
+Focus especially on reading any text overlays word-for-word.`;
+
+  // Send to LLaVA
+  const result = await generateDescriptions(framesToAnalyze, llavaPrompt, {
+    maxWaitMs: 120000,
+  });
+
+  console.log('[LLaVA] Got', result.count, 'descriptions');
+  console.log('[LLaVA] Sample description:', result.descriptions[0]?.substring(0, 200));
+
+  if (result.descriptions.length === 0) {
+    throw new Error('LLaVA returned no descriptions');
+  }
+
+  // Build analysis from descriptions
+  const analysis = buildAnalysisFromLLaVA(result.descriptions, videoInfo, expectedCount);
+
+  console.log('[LLaVA] Analysis complete:', analysis.locations.length, 'locations');
+
+  return analysis;
 }
 
 // Extract frames from video at specific timestamps
