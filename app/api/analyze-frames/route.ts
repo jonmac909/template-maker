@@ -135,49 +135,57 @@ export async function POST(request: NextRequest) {
 
     console.log(`[analyze-frames] Analyzing ${frames.length} frames for: "${title}"`);
 
-    // Extract expected count from title
-    const countMatch = title.match(/(\d+)\s*(must|best|top|places|things|spots|cafe|restaurant|unique)/i);
-    const expectedCount = countMatch ? Math.min(parseInt(countMatch[1]), 10) : 5;
+    // Use up to 20 frames for thorough analysis
+    const framesToAnalyze = frames.slice(0, 20);
+    const frameCount = framesToAnalyze.length;
 
-    // Build OpenAI Vision API request
-    const imageContent = frames.slice(0, 8).map((base64, i) => ([
+    // Build OpenAI Vision API request with ALL frames
+    const imageContent = framesToAnalyze.map((base64, i) => ([
       {
         type: 'image_url',
         image_url: { url: `data:image/jpeg;base64,${base64}` }
       },
       {
         type: 'text',
-        text: `[Frame ${i + 1}/${Math.min(frames.length, 8)}]`
+        text: `[Frame ${i + 1}/${frameCount}]`
       }
     ])).flat();
 
-    const prompt = `You are analyzing frames from a TikTok-style video. I'm showing you ${Math.min(frames.length, 8)} frames.
+    const prompt = `You are analyzing ${frameCount} frames from a TikTok-style travel/guide video.
 
-Title hint: "${title}"
+Title: "${title}"
 Duration: ${duration} seconds
 
-YOUR TASK: Read ALL TEXT OVERLAYS visible in EACH frame. Look for:
-1. Any intro/hook text (big text at the start)
-2. Numbered items (1., 2., 3., etc.)
-3. Location names or captions
-4. Any call-to-action text
+YOUR TASK: Look at EVERY frame and extract ALL text overlays you see.
 
-IMPORTANT: Read text EXACTLY as written. Do NOT guess or make up content.
+CRITICAL: This video likely shows MANY locations/items (could be 5, 10, 15, or more). You MUST find ALL of them by checking EVERY frame carefully.
 
-Return ONLY this JSON structure:
+Look for:
+1. Hook/intro text (big text at start, e.g., "16 must visit spots in Edinburgh")
+2. EVERY numbered item (1., 2., 3., etc.) - there may be 10, 15, 20+ items!
+3. Location names shown on screen
+4. Outro/CTA text
+
+IMPORTANT:
+- Read text EXACTLY as written
+- Do NOT skip any numbered items
+- Check EVERY frame - items appear briefly (1 second each)
+- If you see "1. Dean Village" in one frame and "5. Royal Mile" in another, there are items 2, 3, 4 you may have missed - include them if you saw them
+
+Return ONLY this JSON:
 
 {
-  "hookText": "THE EXACT BIG TEXT from the intro frame (or null)",
+  "hookText": "exact intro/hook text or null",
   "items": [
     { "number": 1, "text": "exact text for item 1" },
     { "number": 2, "text": "exact text for item 2" }
   ],
+  "totalItemsDetected": <number of unique items you found>,
   "visualStyle": "elegant|bold|minimal|playful|modern",
-  "outroText": "any call-to-action text (or null)"
+  "outroText": "CTA text or null"
 }
 
-If you can't read any text clearly, return:
-{ "hookText": null, "items": [], "visualStyle": "modern", "outroText": null }`;
+Include ALL items you find, even if there are 20+!`;
 
     imageContent.push({ type: 'text', text: prompt });
 
@@ -191,7 +199,7 @@ If you can't read any text clearly, return:
       },
       body: JSON.stringify({
         model: 'gpt-4o',
-        max_tokens: 2048,
+        max_tokens: 4096,
         messages: [{
           role: 'user',
           content: imageContent
@@ -217,8 +225,9 @@ If you can't read any text clearly, return:
 
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // Build template from analysis
-    const template = buildTemplateFromAnalysis(parsed, title, duration, expectedCount, frames[0]);
+    // Build template from analysis - use actual items found, not expected count
+    const itemCount = parsed.items?.length || parsed.totalItemsDetected || 5;
+    const template = buildTemplateFromAnalysis(parsed, title, duration, itemCount, frames[0]);
 
     // Generate template ID
     const templateId = `tmpl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -249,10 +258,11 @@ function buildTemplateFromAnalysis(
     items: Array<{ number: number; text: string }>;
     visualStyle: string;
     outroText: string | null;
+    totalItemsDetected?: number;
   },
   title: string,
   duration: number,
-  expectedCount: number,
+  fallbackCount: number,
   thumbnailBase64?: string
 ): {
   type: 'reel';
@@ -267,7 +277,9 @@ function buildTemplateFromAnalysis(
   };
 } {
   const locations: LocationGroup[] = [];
-  const itemCount = Math.max(analysis.items?.length || 0, expectedCount);
+  // Use actual items found - don't override with arbitrary count
+  const actualItems = analysis.items || [];
+  const itemCount = actualItems.length > 0 ? actualItems.length : fallbackCount;
 
   // Calculate timing
   const introTime = Math.min(2, duration * 0.1);
@@ -300,7 +312,7 @@ function buildTemplateFromAnalysis(
     const sceneStart = currentTime;
     const sceneDuration = Math.max(1, Math.round(timePerItem * 10) / 10);
 
-    const item = analysis.items?.[i];
+    const item = actualItems[i];
     const itemText = item?.text || `Location ${i + 1}`;
     const displayName = itemText.replace(/^\d+[\.\)]\s*/, '').trim();
 
