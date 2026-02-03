@@ -385,8 +385,8 @@ function getTextStyleForSceneWithFonts(
   };
 }
 
-// Mac Mini API endpoint for video extraction (has ffmpeg)
-const MAC_MINI_API = process.env.MAC_MINI_API_URL || 'http://jons-mac-mini.local:3847';
+// Railway API endpoint for video extraction (has ffmpeg)
+const RAILWAY_API = process.env.RAILWAY_API_URL || 'https://template-api-production-c2cc.up.railway.app';
 
 export async function POST(request: NextRequest) {
   try {
@@ -400,10 +400,10 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('=== EXTRACTION START ===');
-    console.log('Calling Mac Mini API for:', url);
+    console.log('Calling Railway API for:', url);
 
-    // Call Mac Mini API which has ffmpeg for frame extraction
-    const macMiniResponse = await fetch(`${MAC_MINI_API}/extract`, {
+    // Call Railway API which has ffmpeg for frame extraction
+    const railwayResponse = await fetch(`${RAILWAY_API}/extract`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -411,20 +411,20 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({ url }),
     });
 
-    if (!macMiniResponse.ok) {
-      const errorData = await macMiniResponse.json().catch(() => ({}));
-      console.error('Mac Mini API error:', macMiniResponse.status, errorData);
-      throw new Error(`Mac Mini extraction failed: ${errorData.error || macMiniResponse.status}`);
+    if (!railwayResponse.ok) {
+      const errorData = await railwayResponse.json().catch(() => ({}));
+      console.error('Railway API error:', railwayResponse.status, errorData);
+      throw new Error(`Railway extraction failed: ${errorData.error || railwayResponse.status}`);
     }
 
-    const extractionResult = await macMiniResponse.json();
+    const extractionResult = await railwayResponse.json();
 
-    // Mac Mini returns: { success, videoInfo, analysis: { hookText, locations, outroText, totalLocations } }
+    // Railway returns: { success, videoInfo, analysis: { hookText, locations, outroText, totalLocations } }
     const videoInfo = extractionResult.videoInfo || {};
     const analysis = extractionResult.analysis || {};
     const extractedLocations = analysis.locations || [];
 
-    console.log('Mac Mini extraction result:', {
+    console.log('Railway extraction result:', {
       success: extractionResult.success,
       locationCount: extractedLocations.length,
       duration: videoInfo.duration,
@@ -432,13 +432,13 @@ export async function POST(request: NextRequest) {
     });
 
     if (!extractionResult.success || extractedLocations.length === 0) {
-      throw new Error('Mac Mini could not extract locations from the video');
+      throw new Error('Railway could not extract locations from the video');
     }
 
-    // Build template from Mac Mini response
+    // Build template from Railway response
     const templateId = generateTemplateId();
 
-    // Convert Mac Mini response to our template format
+    // Convert Railway response to our template format
     const locations: LocationGroup[] = [];
     let currentTime = 0;
     const duration = videoInfo.duration || 30;
@@ -461,7 +461,7 @@ export async function POST(request: NextRequest) {
     });
     currentTime = 2;
 
-    // Add each location from Mac Mini response
+    // Add each location from Railway response
     for (let i = 0; i < extractedLocations.length; i++) {
       const loc = extractedLocations[i];
       const locName = loc.name || loc.text?.replace(/^\d+[\.\)]\s*/, '').trim() || `Location ${i + 1}`;
@@ -514,7 +514,7 @@ export async function POST(request: NextRequest) {
         thumbnail: videoInfo.thumbnail || '',
       },
       createdAt: new Date().toISOString(),
-      extractionMethod: 'mac-mini-ffmpeg',
+      extractionMethod: 'railway-ffmpeg',
     };
 
     global.templates = global.templates || {};
