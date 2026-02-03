@@ -512,6 +512,7 @@ export async function POST(request: NextRequest) {
         author: videoInfo.author || 'creator',
         duration: duration,
         thumbnail: videoInfo.thumbnail || '',
+        videoUrl: videoInfo.videoUrl || '',
       },
       createdAt: new Date().toISOString(),
       extractionMethod: 'railway-ffmpeg',

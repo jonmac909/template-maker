@@ -86,6 +86,7 @@ export default function TemplateBreakdown() {
   const [saved, setSaved] = useState(false);
   const [deepAnalyzing, setDeepAnalyzing] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState<string>('');
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     fetchTemplate();
@@ -408,25 +409,55 @@ export default function TemplateBreakdown() {
           className="w-[200px] h-[355px] rounded-xl relative overflow-hidden"
           style={{
             backgroundColor: '#1A1A2E',
-            backgroundImage: template.videoInfo?.thumbnail ? `url(${template.videoInfo.thumbnail})` : undefined,
+            backgroundImage: !isPlaying && template.videoInfo?.thumbnail ? `url(${template.videoInfo.thumbnail})` : undefined,
             backgroundSize: 'cover',
             backgroundPosition: 'center'
           }}
         >
-          {/* Video Preview Overlay */}
-          <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-            <div className="w-16 h-16 rounded-full bg-white/30 flex items-center justify-center backdrop-blur-sm">
-              <div className="w-0 h-0 border-t-[12px] border-t-transparent border-l-[20px] border-l-white border-b-[12px] border-b-transparent ml-1" />
+          {/* Video Player (when playing) */}
+          {isPlaying && template.videoInfo?.videoUrl && (
+            <video
+              src={template.videoInfo.videoUrl}
+              className="absolute inset-0 w-full h-full object-cover"
+              autoPlay
+              controls
+              playsInline
+              onEnded={() => setIsPlaying(false)}
+              onError={() => {
+                console.error('Video playback error');
+                setIsPlaying(false);
+              }}
+            />
+          )}
+          {/* Video Preview Overlay (when not playing) */}
+          {!isPlaying && (
+            <div 
+              className="absolute inset-0 bg-black/30 flex items-center justify-center cursor-pointer"
+              onClick={() => {
+                if (template.videoInfo?.videoUrl) {
+                  setIsPlaying(true);
+                } else {
+                  console.log('No video URL available');
+                }
+              }}
+            >
+              <div className="w-16 h-16 rounded-full bg-white/30 flex items-center justify-center backdrop-blur-sm hover:bg-white/40 transition-colors">
+                <div className="w-0 h-0 border-t-[12px] border-t-transparent border-l-[20px] border-l-white border-b-[12px] border-b-transparent ml-1" />
+              </div>
             </div>
-          </div>
+          )}
           {/* Duration Badge */}
-          <div className="absolute bottom-3 left-3 px-2.5 py-1.5 rounded-xl bg-black/80">
-            <span className="text-white text-[11px] font-semibold">{formatDuration(totalDuration)}</span>
-          </div>
+          {!isPlaying && (
+            <div className="absolute bottom-3 left-3 px-2.5 py-1.5 rounded-xl bg-black/80">
+              <span className="text-white text-[11px] font-semibold">{formatDuration(totalDuration)}</span>
+            </div>
+          )}
           {/* Scenes Badge */}
-          <div className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-xl bg-[#8B5CF6]">
-            <span className="text-white text-[11px] font-semibold">{totalScenes} scenes</span>
-          </div>
+          {!isPlaying && (
+            <div className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-xl bg-[#8B5CF6]">
+              <span className="text-white text-[11px] font-semibold">{totalScenes} scenes</span>
+            </div>
+          )}
         </div>
       </div>
 
