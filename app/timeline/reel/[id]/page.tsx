@@ -206,19 +206,6 @@ export default function TimelineEditor() {
     setTotalDuration(currentStartTime || 15);
   };
 
-  // Load video URL when clip is selected
-  useEffect(() => {
-    const loadPreviewVideo = async () => {
-      if (selectedClipData?.videoId) {
-        const url = await getVideoUrl(selectedClipData.videoId);
-        if (url) {
-          setPreviewVideoUrl(url);
-        }
-      }
-    };
-    loadPreviewVideo();
-  }, [selectedClipData?.videoId]);
-
   const togglePlayback = useCallback(() => {
     const video = videoRef.current;
     if (video && previewVideoUrl) {
@@ -352,6 +339,22 @@ export default function TimelineEditor() {
   const timeMarkers = generateTimeMarkers();
   const timelineWidth = Math.max(totalDuration * 35, 300);
   const selectedClipData = selectedClip ? clips.find(c => c.id === selectedClip) : null;
+
+  // Load video URL when clip is selected
+  useEffect(() => {
+    const loadPreviewVideo = async () => {
+      const clip = selectedClip ? clips.find(c => c.id === selectedClip) : null;
+      if (clip?.videoId) {
+        const url = await getVideoUrl(clip.videoId);
+        if (url) {
+          setPreviewVideoUrl(url);
+        }
+      } else {
+        setPreviewVideoUrl(null);
+      }
+    };
+    loadPreviewVideo();
+  }, [selectedClip, clips]);
 
   return (
     <div className="h-screen bg-black flex flex-col overflow-hidden">
