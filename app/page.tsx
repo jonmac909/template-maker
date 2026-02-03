@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Settings, House, Plus, FileText, Play, Sparkles, Edit3, X, Trash2, Upload, Link } from 'lucide-react';
 
 // Version for debugging deployment - if you see this, the new code is deployed
-const APP_VERSION = 'v2.0.6-extract-text';
+const APP_VERSION = 'v2.1.0-progress-fix';
 
 interface SavedTemplate {
   id: string;
@@ -146,21 +146,25 @@ export default function Home() {
     console.log('Starting extraction for:', inputUrl);
     setLoading(true);
     setError(null);
-    setStatus('Fetching video...');
-    setProgress(5);
+    setProgress(10);
+    setStatus('Downloading video...');
 
     try {
       const platform = inputUrl.includes('tiktok') ? 'tiktok' : 'instagram';
       console.log('Platform detected:', platform);
 
-      // Fake progress updates while extraction runs
+      // Progress updates every 2 seconds
       const progressSteps = [
-        { percent: 10, status: 'Downloading video...', delay: 2000 },
-        { percent: 25, status: 'Downloading video...', delay: 3000 },
-        { percent: 40, status: 'Extracting frames...', delay: 4000 },
-        { percent: 55, status: 'Analyzing with AI...', delay: 8000 },
-        { percent: 70, status: 'Detecting scenes...', delay: 12000 },
-        { percent: 80, status: 'Building template...', delay: 15000 },
+        { percent: 15, status: 'Downloading video...' },
+        { percent: 25, status: 'Downloading video...' },
+        { percent: 35, status: 'Extracting frames...' },
+        { percent: 45, status: 'Extracting frames...' },
+        { percent: 55, status: 'Analyzing with AI...' },
+        { percent: 60, status: 'Analyzing with AI...' },
+        { percent: 65, status: 'Detecting scenes...' },
+        { percent: 70, status: 'Detecting scenes...' },
+        { percent: 75, status: 'Building template...' },
+        { percent: 80, status: 'Building template...' },
       ];
       
       let stepIndex = 0;
@@ -170,7 +174,7 @@ export default function Home() {
           setStatus(progressSteps[stepIndex].status);
           stepIndex++;
         }
-      }, 5000); // Update every 5 seconds
+      }, 2000); // Update every 2 seconds
 
       // Call the extract endpoint directly (no streaming)
       const templateResponse = await fetch('/api/extract', {
