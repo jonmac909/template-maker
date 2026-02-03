@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Settings, House, Plus, FileText, Play, Sparkles, Edit3, X, Trash2, Upload, Link } from 'lucide-react';
 
 // Version for debugging deployment - if you see this, the new code is deployed
-const APP_VERSION = 'v2.1.0-progress-fix';
+const APP_VERSION = 'v2.2.0-real-streaming';
 
 interface SavedTemplate {
   id: string;
@@ -146,48 +146,115 @@ export default function Home() {
     console.log('Starting extraction for:', inputUrl);
     setLoading(true);
     setError(null);
-    setProgress(10);
-    setStatus('Downloading video...');
+    setProgress(5);
+    setStatus('Connecting...');
 
     try {
       const platform = inputUrl.includes('tiktok') ? 'tiktok' : 'instagram';
       console.log('Platform detected:', platform);
 
-      // Progress updates every 2 seconds
-      const progressSteps = [
-        { percent: 15, status: 'Downloading video...' },
-        { percent: 25, status: 'Downloading video...' },
-        { percent: 35, status: 'Extracting frames...' },
-        { percent: 45, status: 'Extracting frames...' },
-        { percent: 55, status: 'Analyzing with AI...' },
-        { percent: 60, status: 'Analyzing with AI...' },
-        { percent: 65, status: 'Detecting scenes...' },
-        { percent: 70, status: 'Detecting scenes...' },
-        { percent: 75, status: 'Building template...' },
-        { percent: 80, status: 'Building template...' },
-      ];
-      
-      let stepIndex = 0;
-      const progressInterval = setInterval(() => {
-        if (stepIndex < progressSteps.length) {
-          setProgress(progressSteps[stepIndex].percent);
-          setStatus(progressSteps[stepIndex].status);
-          stepIndex++;
-        }
-      }, 2000); // Update every 2 seconds
-
-      // Call the extract endpoint directly (no streaming)
-      const templateResponse = await fetch('/api/extract', {
+      // Use fetch with streaming response for real-time progress
+      const response = await fetch('/api/extract-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: inputUrl, platform }),
       });
 
-      clearInterval(progressInterval);
-      setProgress(85);
-      setStatus('Processing results...');
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
 
-      const templateData = await templateResponse.json();
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response stream available');
+      }
+
+      const decoder = new TextDecoder();
+      let templateData: any = null;
+      let buffer = '';
+
+      // Read the SSE stream
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              console.log('SSE event:', data);
+              
+              // Update progress based on stage
+              if (data.stage) {
+                switch (data.stage) {
+                  case 'downloading':
+                    setProgress(data.progress || 15);
+                    setStatus('Downloading video...');
+                    break;
+                  case 'extracting':
+                    setProgress(data.progress || 35);
+                    setStatus('Extracting frames...');
+                    break;
+                  case 'analyzing':
+                    setProgress(data.progress || 55);
+                    setStatus('Analyzing with AI...');
+                    break;
+                  case 'detecting':
+                    setProgress(data.progress || 70);
+                    setStatus('Detecting scenes...');
+                    break;
+                  case 'building':
+                    setProgress(data.progress || 85);
+                    setStatus('Building template...');
+                    break;
+                  case 'complete':
+                    setProgress(95);
+                    setStatus('Processing results...');
+                    templateData = data;
+                    break;
+                  case 'error':
+                    throw new Error(data.error || 'Extraction failed');
+                }
+              }
+              
+              // Also handle direct progress updates
+              if (data.progress && !data.stage) {
+                setProgress(data.progress);
+              }
+              if (data.status) {
+                setStatus(data.status);
+              }
+            } catch (parseErr) {
+              // Ignore parse errors for incomplete JSON
+              console.log('Parse error (may be incomplete):', parseErr);
+            }
+          }
+        }
+      }
+
+      // If we didn't get template data from stream, fall back to regular endpoint
+      if (!templateData || !templateData.templateId) {
+        console.log('No template from stream, falling back to regular endpoint');
+        setProgress(50);
+        setStatus('Processing (fallback)...');
+        
+        const fallbackResponse = await fetch('/api/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: inputUrl, platform }),
+        });
+        
+        templateData = await fallbackResponse.json();
+      }
+
+      setProgress(95);
+      setStatus('Processing results...');
 
       if (!templateData.templateId || !templateData.template) {
         throw new Error('Failed to build template');
