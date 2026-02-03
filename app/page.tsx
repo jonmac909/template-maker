@@ -234,10 +234,9 @@ export default function Home() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file type
-      const validTypes = ['video/mp4', 'video/quicktime', 'video/webm', 'video/mov'];
-      if (!validTypes.includes(file.type) && !file.name.match(/\.(mp4|mov|webm)$/i)) {
-        setError('Please upload a valid video file (.mp4, .mov, .webm)');
+      // Validate file type - accept any video
+      if (!file.type.startsWith('video/')) {
+        setError('Please select a video file');
         return;
       }
       // Validate file size (max 100MB)
@@ -563,7 +562,8 @@ export default function Home() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
+                  accept="video/*"
+                  capture="environment"
                   onChange={handleFileSelect}
                   className="hidden"
                   id="video-upload"
