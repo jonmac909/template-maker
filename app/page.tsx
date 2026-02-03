@@ -146,69 +146,44 @@ export default function Home() {
     console.log('Starting extraction for:', inputUrl);
     setLoading(true);
     setError(null);
-    setStatus('Connecting...');
-    setProgress(0);
+    setStatus('Fetching video...');
+    setProgress(5);
 
     try {
       const platform = inputUrl.includes('tiktok') ? 'tiktok' : 'instagram';
       console.log('Platform detected:', platform);
 
-      // Try streaming for progress display, fall back to regular endpoint
-      let templateData = null;
+      // Fake progress updates while extraction runs
+      const progressSteps = [
+        { percent: 10, status: 'Downloading video...', delay: 2000 },
+        { percent: 25, status: 'Downloading video...', delay: 3000 },
+        { percent: 40, status: 'Extracting frames...', delay: 4000 },
+        { percent: 55, status: 'Analyzing with AI...', delay: 8000 },
+        { percent: 70, status: 'Detecting scenes...', delay: 12000 },
+        { percent: 80, status: 'Building template...', delay: 15000 },
+      ];
       
-      try {
-        // Use streaming endpoint for real-time progress
-        const streamResponse = await fetch('/api/extract-stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: inputUrl, platform }),
-        });
-
-        if (streamResponse.ok && streamResponse.body) {
-          const reader = streamResponse.body.getReader();
-          const decoder = new TextDecoder();
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-                  
-                  if (data.percent !== undefined) {
-                    setProgress(data.percent);
-                  }
-                  
-                  if (data.message) {
-                    setStatus(data.message);
-                  }
-                } catch (e) {
-                  // Ignore parse errors for incomplete chunks
-                }
-              }
-            }
-          }
+      let stepIndex = 0;
+      const progressInterval = setInterval(() => {
+        if (stepIndex < progressSteps.length) {
+          setProgress(progressSteps[stepIndex].percent);
+          setStatus(progressSteps[stepIndex].status);
+          stepIndex++;
         }
-      } catch (streamError) {
-        console.log('Streaming not available, continuing with regular extraction');
-      }
+      }, 5000); // Update every 5 seconds
 
-      // Always use the regular extract endpoint to build the template
-      setStatus('Building template...');
-      setProgress(85);
-
+      // Call the extract endpoint directly (no streaming)
       const templateResponse = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: inputUrl, platform }),
       });
 
-      templateData = await templateResponse.json();
+      clearInterval(progressInterval);
+      setProgress(85);
+      setStatus('Processing results...');
+
+      const templateData = await templateResponse.json();
 
       if (!templateData.templateId || !templateData.template) {
         throw new Error('Failed to build template');
