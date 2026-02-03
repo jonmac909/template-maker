@@ -440,58 +440,87 @@ export async function POST(request: NextRequest) {
 
     // Convert Railway response to our template format
     const locations: LocationGroup[] = [];
-    let currentTime = 0;
     const duration = videoInfo.duration || 30;
     const locationCount = extractedLocations.length;
-    const timePerLocation = locationCount > 0 ? (duration - 4) / locationCount : 2; // Reserve 2s intro + 2s outro
+    
+    // Check if Gemini provided startTime/endTime (better accuracy)
+    const hasGeminiTiming = extractedLocations.length > 0 && 
+      (extractedLocations[0].startTime !== undefined || extractedLocations[0].endTime !== undefined);
+    
+    console.log('[Extract] Using timing mode:', hasGeminiTiming ? 'Gemini (frame-accurate)' : 'calculated (estimated)');
 
     // Add intro
+    const firstLocStart = hasGeminiTiming && extractedLocations[0]?.startTime !== undefined 
+      ? extractedLocations[0].startTime 
+      : 2;
+    const introEnd = Math.min(firstLocStart, 3); // Intro is max 3 seconds
+    
     locations.push({
       locationId: 0,
       locationName: 'Intro',
       scenes: [{
         id: 1,
         startTime: 0,
-        endTime: 2,
-        duration: 2,
+        endTime: introEnd,
+        duration: introEnd,
         textOverlay: analysis.hookText || videoInfo.title || 'Intro',
         description: 'Hook shot',
       }],
-      totalDuration: 2,
+      totalDuration: introEnd,
     });
-    currentTime = 2;
 
     // Add each location from Railway response
+    // Fallback timing calculation if Gemini didn't provide times
+    const fallbackTimePerLocation = locationCount > 0 ? (duration - 4) / locationCount : 2;
+    let fallbackCurrentTime = introEnd;
+    
     for (let i = 0; i < extractedLocations.length; i++) {
       const loc = extractedLocations[i];
       const locName = loc.name || loc.text?.replace(/^\d+[\.\)]\s*/, '').trim() || `Location ${i + 1}`;
-      const sceneDuration = Math.max(1, Math.round(timePerLocation * 10) / 10);
+      
+      // Use Gemini timing if available, otherwise calculate
+      let sceneStart: number;
+      let sceneEnd: number;
+      
+      if (hasGeminiTiming) {
+        sceneStart = loc.startTime ?? fallbackCurrentTime;
+        sceneEnd = loc.endTime ?? (extractedLocations[i + 1]?.startTime ?? duration - 2);
+      } else {
+        sceneStart = fallbackCurrentTime;
+        sceneEnd = fallbackCurrentTime + fallbackTimePerLocation;
+        fallbackCurrentTime = sceneEnd;
+      }
+      
+      const sceneDuration = Math.max(1, Math.round((sceneEnd - sceneStart) * 10) / 10);
 
       locations.push({
         locationId: i + 1,
         locationName: locName,
         scenes: [{
           id: (i + 1) * 10 + 1,
-          startTime: currentTime,
-          endTime: currentTime + sceneDuration,
+          startTime: sceneStart,
+          endTime: sceneEnd,
           duration: sceneDuration,
           textOverlay: `${i + 1}) ${locName}`,
           description: `Shot of ${locName}`,
         }],
         totalDuration: sceneDuration,
       });
-      currentTime += sceneDuration;
     }
 
     // Add outro
-    const outroTime = Math.max(1, duration - currentTime);
+    const lastLocation = locations[locations.length - 1];
+    const lastSceneEnd = lastLocation?.scenes[lastLocation.scenes.length - 1]?.endTime || (duration - 2);
+    const outroStart = Math.min(lastSceneEnd, duration - 1);
+    const outroTime = Math.max(1, duration - outroStart);
+    
     locations.push({
       locationId: locationCount + 1,
       locationName: 'Outro',
       scenes: [{
         id: 999,
-        startTime: currentTime,
-        endTime: currentTime + outroTime,
+        startTime: outroStart,
+        endTime: duration,
         duration: outroTime,
         textOverlay: analysis.outroText || 'Follow for more!',
         description: 'Call to action',
