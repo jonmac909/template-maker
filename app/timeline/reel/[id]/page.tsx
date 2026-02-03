@@ -101,6 +101,7 @@ export default function TimelineEditor() {
   const params = useParams();
   const router = useRouter();
   const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const [template, setTemplate] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,6 +113,7 @@ export default function TimelineEditor() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [totalDuration, setTotalDuration] = useState(15);
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
 
   // Selection state
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
@@ -204,9 +206,30 @@ export default function TimelineEditor() {
     setTotalDuration(currentStartTime || 15);
   };
 
+  // Load video URL when clip is selected
+  useEffect(() => {
+    const loadPreviewVideo = async () => {
+      if (selectedClipData?.videoId) {
+        const url = await getVideoUrl(selectedClipData.videoId);
+        if (url) {
+          setPreviewVideoUrl(url);
+        }
+      }
+    };
+    loadPreviewVideo();
+  }, [selectedClipData?.videoId]);
+
   const togglePlayback = useCallback(() => {
+    const video = videoRef.current;
+    if (video && previewVideoUrl) {
+      if (isPlaying) {
+        video.pause();
+      } else {
+        video.play();
+      }
+    }
     setIsPlaying(prev => !prev);
-  }, []);
+  }, [isPlaying, previewVideoUrl]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -347,8 +370,24 @@ export default function TimelineEditor() {
       {/* Video Preview */}
       <div className="flex-1 flex justify-center items-center px-8 py-2 min-h-0">
         <div className="relative h-full max-h-[45vh] aspect-[9/16] bg-[#1A1A2E] rounded-2xl overflow-hidden">
-          {/* Show selected clip thumbnail */}
-          {selectedClipData?.thumbnail && (
+          {/* Actual Video Element */}
+          {previewVideoUrl && (
+            <video
+              ref={videoRef}
+              src={previewVideoUrl}
+              className="absolute inset-0 w-full h-full object-cover"
+              playsInline
+              muted
+              onTimeUpdate={(e) => {
+                const video = e.target as HTMLVideoElement;
+                setCurrentTime(video.currentTime);
+              }}
+              onEnded={() => setIsPlaying(false)}
+            />
+          )}
+          
+          {/* Show selected clip thumbnail if no video */}
+          {!previewVideoUrl && selectedClipData?.thumbnail && (
             <div
               className="absolute inset-0 bg-cover bg-center"
               style={{ backgroundImage: `url(${selectedClipData.thumbnail})` }}
