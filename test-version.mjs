@@ -1,10 +1,13 @@
 import { chromium } from 'playwright';
+import { verificationTarget } from './scripts/verification-target.mjs';
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 
 // Bypass cache
-await page.goto('https://reel-template-extractor.vercel.app/?nocache=' + Date.now(), { 
+const target = new URL(verificationTarget);
+target.searchParams.set('nocache', String(Date.now()));
+await page.goto(target.href, {
   waitUntil: 'networkidle' 
 });
 

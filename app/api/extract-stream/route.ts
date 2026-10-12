@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 
+export const maxDuration = 120;
+
 const RAILWAY_API = process.env.RAILWAY_API_URL || 'https://template-api-production-c2cc.up.railway.app';
 
 // Helper to send SSE event

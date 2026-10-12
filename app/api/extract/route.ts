@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateDescriptions, checkVisionAvailability } from '../../lib/opensource-vision-client';
 
+export const maxDuration = 120;
+
 // Use OpenAI API as fallback
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
@@ -1686,7 +1688,7 @@ Read the ACTUAL text from frames. Don't guess or make up locations.`;
 
     // Check if it's an API key issue
     if (errorMessage.includes('api_key') || errorMessage.includes('authentication') || errorMessage.includes('401')) {
-      console.error('ANTHROPIC_API_KEY may not be set correctly on Vercel!');
+      console.error('ANTHROPIC_API_KEY may not be set correctly in the server environment!');
     }
 
     console.log('=== FALLING BACK TO DATABASE (Claude failed) ===');

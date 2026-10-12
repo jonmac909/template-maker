@@ -6,6 +6,8 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 
+export const maxDuration = 120;
+
 const execAsync = promisify(exec);
 
 // Use OpenAI for vision analysis

@@ -1,10 +1,11 @@
 import { chromium } from 'playwright';
+import { verificationTarget } from './scripts/verification-target.mjs';
 
 const browser = await chromium.launch({ headless: false });
 const page = await browser.newPage();
 
 console.log('Opening live site...');
-await page.goto('https://reel-template-extractor.vercel.app/');
+await page.goto(verificationTarget);
 await page.waitForLoadState('networkidle');
 
 // Check for version number

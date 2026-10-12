@@ -1,10 +1,11 @@
 import { chromium } from 'playwright';
+import { verificationTarget } from './scripts/verification-target.mjs';
 
 async function checkTemplate() {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
-  await page.goto('https://template-maker-one.vercel.app');
+  await page.goto(verificationTarget);
   await page.waitForTimeout(2000);
 
   // Get all templates from localStorage
