@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateDescriptions, checkVisionAvailability } from '../../lib/opensource-vision-client';
 
+export const maxDuration = 120;
+
 // Claude Vision API (primary)
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';

@@ -6,18 +6,21 @@
 - DO NOT run dev server on Jacq's laptop (causes overheating)
 
 ## Deployment - READ THIS CAREFULLY
-- You **CANNOT push to GitHub** (no git credentials configured)
-- After committing changes, **ALWAYS tell Jacq to run `git push`**
-- DO NOT say "deployed" or "live" until Jacq confirms she pushed
-- Vercel auto-deploys from GitHub main branch
-- Live site: https://template-maker-one.vercel.app
+- Hosting: Cloudflare only. Never Vercel or Netlify.
+- Use the Docker gate, PR and verified green checks described in AGENTS.md.
+- GitHub Actions are not used for releases. A git push does not deploy the app.
+- Next.js SSR deployment to Workers requires `@opennextjs/cloudflare`, the
+  approved Cloudflare environment and verification of APIs, auth and editor flows.
+- Do not claim a deployment is live until its exact merged commit is verified.
 
 ## Your Job
 1. Make code changes
-2. Commit them: `git add -A && git commit -m "description"`
-3. **Tell Jacq: "Changes committed. Please run `git push` to deploy live."**
-4. Wait for Jacq to confirm push
-5. Vercel will auto-deploy (takes ~60 seconds)
+2. Run the Docker gate and review the exact diff.
+3. Commit, push and open a PR; merge only after verified green checks.
+4. For an authorized app deployment, release the tested merged source to
+   Cloudflare and verify it live before reporting success.
+5. For configuration-only work, report the merged source and check results;
+   do not imply that a Cloudflare application deployment occurred.
 
 ## Tech Stack
 - Next.js 16.1.6 with App Router

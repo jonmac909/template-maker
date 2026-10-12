@@ -1,7 +1,8 @@
 import { chromium } from 'playwright';
+import { verificationTarget } from './scripts/verification-target.mjs';
 
 const TIKTOK_URL = 'https://www.tiktok.com/@lostcreektravel/video/7407085039734584618';
-const APP_URL = 'https://template-maker-one.vercel.app';
+const APP_URL = verificationTarget;
 
 async function debugExtraction() {
   const browser = await chromium.launch({ headless: false }); // Show browser

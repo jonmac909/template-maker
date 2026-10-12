@@ -5,7 +5,7 @@ This skill provides patterns for extracting video information, frames, and metad
 
 ## Architecture Options
 
-### Option 1: Cobalt API (yt-dlp wrapper) - RECOMMENDED for Vercel
+### Option 1: Cobalt API (yt-dlp wrapper) - for serverless runtimes
 Cobalt.tools is a hosted yt-dlp service that works from serverless environments.
 
 ```typescript
